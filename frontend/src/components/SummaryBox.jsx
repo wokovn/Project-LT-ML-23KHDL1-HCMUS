@@ -57,7 +57,7 @@ function SummaryBox({ summary, totalArticles, loading }) {
             Đang tóm tắt...
           </span>
         ) : totalArticles ? (
-          <span className="ml-auto text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+          <span className="ml-auto text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-m font-medium">
             {totalArticles} bài
           </span>
         ) : null}

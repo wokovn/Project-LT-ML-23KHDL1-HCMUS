@@ -1,6 +1,10 @@
 import braveService from '../services/brave.service.js';
 import scrapeService from '../services/scrape.service.js';
 import geminiService from '../services/gemini.service.js';
+import pLimit from 'p-limit';
+
+// Giới hạn concurrency - chỉ chạy 3 scrape cùng lúc (thay vì 10)
+const scrapeLimit = pLimit(3);
 
 class SearchController {
   async search(req, res) {
@@ -103,12 +107,20 @@ class SearchController {
       console.log(`[GEMINI API] Starting summarization of ${articles.length} articles...`);
       let summary;
       try {
-        summary = await geminiService.summarizeMultipleNews(articles);
+        summary = await geminiService.summarizeMultipleNews(articles, query);
         console.log('[GEMINI API] Summarization successful');
       } catch (err) {
         console.error('[GEMINI API] ERROR:', err.message);
         console.error('[GEMINI API] Status:', err.response?.status);
         console.error('[GEMINI API] Details:', err.response?.data);
+        
+        if (err.message.includes('PROHIBITED_CONTENT')) {
+          return res.status(400).json({ 
+            error: 'Prohibited content',
+            api: 'Google Gemini API',
+            details: 'Nội dung không phù hợp. Gemini AI đã chặn nội dung này vì vi phạm tiêu chuẩn an toàn.'
+          });
+        }
         
         if (err.response?.status === 429 || err.message.includes('429')) {
           return res.status(429).json({ 
@@ -143,29 +155,31 @@ class SearchController {
 
   async scrapeAndSummarize(req, res) {
     try {
-      const { urls } = req.body;
+      const { urls, query } = req.body;
       
       if (!urls || !Array.isArray(urls) || urls.length === 0) {
         return res.status(400).json({ error: 'URLs array is required' });
       }
 
-      // 1. Scrape tất cả URLs bằng Puppeteer
-      console.log(`[PUPPETEER] Scraping ${urls.length} articles...`);
-      const scrapePromises = urls.map(async (url, index) => {
-        try {
-          const scraped = await scrapeService.scrapeUrl(url);
-          console.log(`[PUPPETEER] Successfully scraped: ${url}`);
-          return {
-            title: scraped.title || `Bai ${index + 1}`,
-            source: new URL(url).hostname,
-            content: scraped.text || '',
-            url: url
-          };
-        } catch (err) {
-          console.error(`[PUPPETEER] Failed to scrape ${url}:`, err.message);
-          return null;
-        }
-      });
+      // 1. Scrape tất cả URLs bằng Puppeteer (GIỚI HẠN 3 LUỔNG)
+      console.log(`[PUPPETEER] Scraping ${urls.length} articles (concurrency: 3)...`);
+      const scrapePromises = urls.map((url, index) => 
+        scrapeLimit(async () => {
+          try {
+            const scraped = await scrapeService.scrapeUrl(url);
+            console.log(`[PUPPETEER] Successfully scraped: ${url}`);
+            return {
+              title: scraped.title || `Bai ${index + 1}`,
+              source: new URL(url).hostname,
+              content: scraped.text || '',
+              url: url
+            };
+          } catch (err) {
+            console.error(`[PUPPETEER] Failed to scrape ${url}:`, err.message);
+            return null;
+          }
+        })
+      );
 
       const articles = (await Promise.all(scrapePromises)).filter(a => a !== null);
       console.log(`[PUPPETEER] Successfully scraped ${articles.length}/${urls.length} articles`);
@@ -178,12 +192,20 @@ class SearchController {
       console.log(`[GEMINI API] Starting summarization of ${articles.length} articles...`);
       let summary;
       try {
-        summary = await geminiService.summarizeMultipleNews(articles);
+        summary = await geminiService.summarizeMultipleNews(articles, query || '');
         console.log('[GEMINI API] Summarization successful');
       } catch (err) {
         console.error('[GEMINI API] ERROR:', err.message);
         console.error('[GEMINI API] Status:', err.response?.status);
         console.error('[GEMINI API] Details:', err.response?.data);
+        
+        if (err.message.includes('PROHIBITED_CONTENT')) {
+          return res.status(400).json({ 
+            error: 'Prohibited content',
+            api: 'Google Gemini API',
+            details: 'Nội dung không phù hợp. Gemini AI đã chặn nội dung này vì vi phạm tiêu chuẩn an toàn.'
+          });
+        }
         
         if (err.response?.status === 429 || err.message.includes('429')) {
           return res.status(429).json({ 

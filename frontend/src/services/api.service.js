@@ -30,8 +30,8 @@ class ApiService {
     return response.data;
   }
 
-  async scrapeAndSummarize(urls) {
-    const response = await this.client.post('/scrape-summarize', { urls });
+  async scrapeAndSummarize(urls, query = '') {
+    const response = await this.client.post('/scrape-summarize', { urls, query });
     return response.data;
   }
 

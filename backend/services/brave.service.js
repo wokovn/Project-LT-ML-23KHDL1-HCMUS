@@ -9,7 +9,7 @@ class BraveService {
 
     const params = {
       q: query,
-      search_lang: options.language || 'vi',
+      search_lang: 'vi',
       count: 10
     };
 

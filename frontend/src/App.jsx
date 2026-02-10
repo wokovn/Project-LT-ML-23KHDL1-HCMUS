@@ -16,6 +16,10 @@ function App() {
   const [summary, setSummary] = useState(null);
   const [totalArticles, setTotalArticles] = useState(0);
   
+  // Individual article summaries
+  const [articleSummaries, setArticleSummaries] = useState({});
+  const [articleSummaryLoading, setArticleSummaryLoading] = useState({});
+  
   // Filter states
   const [voice, setVoice] = useState('Bắc');
   const [time, setTime] = useState('pd');
@@ -81,11 +85,56 @@ function App() {
     };
   };
 
+  const handleArticleSummarize = async (articleUrl, index) => {
+    const currentSummary = articleSummaries[index];
+    
+    // If summary exists, toggle visibility
+    if (currentSummary?.content) {
+      setArticleSummaries(prev => ({
+        ...prev,
+        [index]: {
+          ...prev[index],
+          visible: !prev[index].visible
+        }
+      }));
+      return;
+    }
+
+    // If no summary yet, fetch it
+    setArticleSummaryLoading(prev => ({ ...prev, [index]: true }));
+    
+    try {
+      const data = await apiService.scrape(articleUrl);
+      const summaryData = await apiService.summarizeNews(data.text, data.title);
+      
+      setArticleSummaries(prev => ({
+        ...prev,
+        [index]: {
+          content: summaryData.summary,
+          visible: true
+        }
+      }));
+    } catch (err) {
+      console.error('Article summarize error:', err);
+      setArticleSummaries(prev => ({
+        ...prev,
+        [index]: {
+          content: 'Không thể tóm tắt bài viết này: ' + (err.response?.data?.error || err.message),
+          visible: true
+        }
+      }));
+    } finally {
+      setArticleSummaryLoading(prev => ({ ...prev, [index]: false }));
+    }
+  };
+
   const handleSearch = async (query) => {
     setLoading(true);
     setError('');
     setSummary(null);
     setTotalArticles(0);
+    setArticleSummaries({});
+    setArticleSummaryLoading({});
     
     try {
       // Check if it's a URL or search query
@@ -104,7 +153,7 @@ function App() {
           timeAgo: "Vừa xong",
           title: data.title || 'Không có tiêu đề',
           description: data.text?.substring(0, 200) + '...' || '',
-          imageUrl: 'https://placehold.co/400x300?text=Scraped+Content',
+          imageUrl: 'https://placehold.co/400x300?text=No+Image',
           imageAlt: data.title || 'Scraped content',
           articleUrl: query
         };
@@ -130,27 +179,130 @@ function App() {
         const searchData = await apiService.search(query, searchOptions);
         console.log('Search results:', searchData);
         
+        // Check for family_friendly at the top level
+        if (searchData.web?.family_friendly === false || searchData.news?.family_friendly === false) {
+          setError('Kết quả tìm kiếm chứa nội dung không phù hợp. Vui lòng thử từ khóa khác.');
+          setArticles([]);
+          setLoading(false);
+          return;
+        }
+        
         // Map Brave results to articles and show immediately
         let urls = [];
+        let hasUnsafeContent = false;
+        
         if (searchData.news?.results && searchData.news.results.length > 0) {
+          // Check for unsafe content
+          const unsafeResults = searchData.news.results.filter(r => r.family_friendly === false);
+          if (unsafeResults.length > 0) {
+            hasUnsafeContent = true;
+          }
+          
           const mappedArticles = searchData.news.results
+            .filter(result => {
+              // Loại bỏ nội dung không phù hợp
+              if (result.family_friendly === false) {
+                return false;
+              }
+              // Loại bỏ video và image results
+              const isVideoType = result.type === 'video_result' || result.subtype === 'video';
+              const hasVideo = result.video !== undefined;
+              const isImage = result.type === 'image_result';
+              const isVideoUrl = result.url?.includes('youtube.com') || 
+                                  result.url?.includes('tiktok.com') || 
+                                  result.url?.includes('youtu.be');
+              return !isVideoType && !hasVideo && !isImage && !isVideoUrl;
+            })
             .slice(0, 10)
             .map((result, index) => mapBraveResultToArticle(result, index));
+          
+          // Check if all results were filtered out
+          if (mappedArticles.length === 0) {
+            if (hasUnsafeContent) {
+              setError('Kết quả tìm kiếm chứa nội dung không phù hợp. Vui lòng thử từ khóa khác.');
+            } else {
+              setError('Không tìm thấy kết quả nào');
+            }
+            setArticles([]);
+            setLoading(false);
+            return;
+          }
+          
           setArticles(mappedArticles);
-          urls = searchData.news.results.slice(0, 10).map(r => r.url);
+          urls = searchData.news.results
+            .filter(result => {
+              if (result.family_friendly === false) {
+                return false;
+              }
+              const isVideoType = result.type === 'video_result' || result.subtype === 'video';
+              const hasVideo = result.video !== undefined;
+              const isImage = result.type === 'image_result';
+              const isVideoUrl = result.url?.includes('youtube.com') || 
+                                  result.url?.includes('tiktok.com') || 
+                                  result.url?.includes('youtu.be');
+              return !isVideoType && !hasVideo && !isImage && !isVideoUrl;
+            })
+            .slice(0, 10)
+            .map(r => r.url);
         } else if (searchData.web?.results && searchData.web.results.length > 0) {
+          // Check for unsafe content
+          const unsafeResults = searchData.web.results.filter(r => r.family_friendly === false);
+          if (unsafeResults.length > 0) {
+            hasUnsafeContent = true;
+          }
+          
           const mappedArticles = searchData.web.results
-            .filter(result => result.type === 'search_result')
+            .filter(result => {
+              // Loại bỏ nội dung không phù hợp
+              if (result.family_friendly === false) {
+                return false;
+              }
+              // Chỉ lấy search_result thông thường, bỏ video/image
+              const isSearchResult = result.type === 'search_result';
+              const isVideoType = result.subtype === 'video';
+              const hasVideo = result.video !== undefined;
+              const isImage = result.type === 'image_result';
+              const isVideoUrl = result.url?.includes('youtube.com') || 
+                                  result.url?.includes('tiktok.com') || 
+                                  result.url?.includes('youtu.be');
+              return isSearchResult && !isVideoType && !hasVideo && !isImage && !isVideoUrl;
+            })
             .slice(0, 10)
             .map((result, index) => mapBraveResultToArticle(result, index));
+          
+          // Check if all results were filtered out
+          if (mappedArticles.length === 0) {
+            if (hasUnsafeContent) {
+              setError('Kết quả tìm kiếm chứa nội dung không phù hợp. Vui lòng thử từ khóa khác.');
+            } else {
+              setError('Không tìm thấy kết quả nào');
+            }
+            setArticles([]);
+            setLoading(false);
+            return;
+          }
+          
           setArticles(mappedArticles);
           urls = searchData.web.results
-            .filter(r => r.type === 'search_result')
+            .filter(result => {
+              if (result.family_friendly === false) {
+                return false;
+              }
+              const isSearchResult = result.type === 'search_result';
+              const isVideoType = result.subtype === 'video';
+              const hasVideo = result.video !== undefined;
+              const isImage = result.type === 'image_result';
+              const isVideoUrl = result.url?.includes('youtube.com') || 
+                                  result.url?.includes('tiktok.com') || 
+                                  result.url?.includes('youtu.be');
+              return isSearchResult && !isVideoType && !hasVideo && !isImage && !isVideoUrl;
+            })
             .slice(0, 10)
             .map(r => r.url);
         } else {
           setError('Không tìm thấy kết quả nào');
           setArticles([]);
+          setLoading(false);
           return;
         }
         
@@ -160,7 +312,7 @@ function App() {
         
         try {
           console.log('Summarizing articles...');
-          const data = await apiService.scrapeAndSummarize(urls);
+          const data = await apiService.scrapeAndSummarize(urls, query);
           console.log('Summary results:', data);
           
           if (data.summary) {
@@ -177,8 +329,10 @@ function App() {
     } catch (err) {
       setError(err.response?.data?.error || 'Đã xảy ra lỗi khi xử lý yêu cầu');
       console.error('Error:', err);
+      setLoading(false);
+      setSummaryLoading(false);
     } finally {
-      // Only set loading false if not a search term (URL case)
+      // Ensure loading is stopped
       if (query.startsWith('http://') || query.startsWith('https://')) {
         setLoading(false);
       }
@@ -208,7 +362,7 @@ function App() {
         </div>
         <div className="w-full max-w-3xl mt-16 space-y-6">
           {(summary || summaryLoading) && <SummaryBox summary={summary} totalArticles={totalArticles} loading={summaryLoading} />}
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4 pl-1">Kết quả tóm tắt mới nhất</h2>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4 pl-1">Kết quả tìm được</h2>
           {loading && (
             <div className="text-center py-8">
               <span className="material-symbols-outlined text-4xl text-slate-400 animate-spin">progress_activity</span>
@@ -222,12 +376,20 @@ function App() {
             </div>
           )}
           {!loading && articles.length > 0 && articles.map((article, index) => (
-            <NewsArticle key={index} {...article} />
+            <NewsArticle 
+              key={index} 
+              {...article} 
+              onSummarize={() => handleArticleSummarize(article.articleUrl, index)}
+              summary={articleSummaries[index]?.content}
+              summaryVisible={articleSummaries[index]?.visible}
+              summaryLoading={articleSummaryLoading[index]}
+            />
           ))}
         </div>
         <div className="mt-20 text-center px-4 w-full">
           <p className="text-xs text-slate-400">
-            AI có thể mắc lỗi. Hãy kiểm tra lại thông tin quan trọng. Được xây dựng bởi <span className="font-semibold text-slate-500">HCMUS - Machine Learning - 23KHDL1 - Nhóm 4 </span>
+            AI có thể mắc lỗi. Hãy kiểm tra lại thông tin quan trọng. 
+            <br />Được xây dựng bởi <span className="font-semibold text-slate-500">HCMUS - Machine Learning - 23KHDL1 - Nhóm 4 </span>
           </p>
         </div>
       </main>
