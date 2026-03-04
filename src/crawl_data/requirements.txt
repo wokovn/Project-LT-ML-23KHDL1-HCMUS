@@ -1,0 +1,21 @@
+# Core Audio Processing
+numpy
+librosa
+soundfile
+
+# YouTube Download
+yt-dlp
+
+# ASR (Speech-to-Text)
+faster-whisper
+torch
+ctranslate2
+
+# Text Normalization
+num2words
+
+# Progress Bar
+tqdm
+
+# FFmpeg (required by yt-dlp & librosa)
+ffmpeg-python
