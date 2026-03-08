@@ -13,7 +13,6 @@ Pipeline:
     5. Generate pipe-separated metadata CSV (audio_file|text|speaker)
 """
 
-import os
 import sys
 import re
 import csv
@@ -21,10 +20,9 @@ import gc
 import logging
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import warnings
 
-import numpy as np
 from tqdm import tqdm
 import librosa
 import soundfile as sf
@@ -36,16 +34,19 @@ from num2words import num2words
 
 warnings.filterwarnings('ignore')
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+
 
 @dataclass
 class Config:
     """Pipeline configuration with sane defaults for Vietnamese TTS."""
 
-    # Paths
-    output_dir: Path = Path("output")
-    wavs_dir: Path = Path("output/wavs")
-    logs_dir: Path = Path("logs")
-    temp_dir: Path = Path("temp")
+    # Paths (project root → data/)
+    output_dir: Path = field(default_factory=lambda: DATA_DIR)
+    wavs_dir: Path = field(default_factory=lambda: DATA_DIR / "wavs")
+    logs_dir: Path = field(default_factory=lambda: DATA_DIR / "logs")
+    temp_dir: Path = field(default_factory=lambda: DATA_DIR / "temp")
 
     # Audio settings
     sample_rate: int = 22050
@@ -901,7 +902,7 @@ def main():
     print(f"Seg window: [{config.min_segment_duration}s, {config.max_segment_duration}s]")
     print("═" * 50)
 
-    urls_file = Path("youtube_urls.txt")
+    urls_file = PROJECT_ROOT / "src" / "crawl_data" / "youtube_urls.txt"
     if urls_file.exists():
         with open(urls_file, 'r', encoding='utf-8') as f:
             youtube_urls = [line.strip() for line in f if line.strip() and not line.startswith('#')]
