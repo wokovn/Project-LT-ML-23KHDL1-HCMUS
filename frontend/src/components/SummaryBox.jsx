@@ -1,98 +1,104 @@
-import { useEffect, useRef } from 'react';
-import 'quill/dist/quill.snow.css';
-import Quill from 'quill';
+import { useState } from 'react';
 
-function SummaryBox({ summary, totalArticles, loading }) {
-  const editorRef = useRef(null);
-  const quillRef = useRef(null);
+function SummaryBox({ summary, totalArticles, loading, onResummarize, resummarizeDisabled = false }) {
+  const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (!editorRef.current || loading) return;
-
-    // Initialize Quill only once
-    if (!quillRef.current) {
-      quillRef.current = new Quill(editorRef.current, {
-        theme: 'snow',
-        readOnly: true,
-        modules: {
-          toolbar: false
-        }
-      });
+  const handleCopy = async () => {
+    if (!summary) return;
+    try {
+      await navigator.clipboard.writeText(summary);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
     }
+  };
 
-    // Set content (convert plain text to Quill format)
-    if (summary) {
-      // Convert plain text with line breaks to HTML
-      const htmlContent = summary
-        .split('\n')
-        .map(line => {
-          line = line.trim();
-          if (!line) return '<br>';
-          
-          // Check for numbered list (1. 2. 3.)
-          if (/^\d+\./.test(line)) {
-            return `<p><strong>${line}</strong></p>`;
-          }
-          
-          // Check for header-like lines (all caps or ending with :)
-          if (line.endsWith(':') || line === line.toUpperCase()) {
-            return `<h3>${line}</h3>`;
-          }
-          
-          return `<p>${line}</p>`;
-        })
-        .join('');
+  const renderedSummary = summary
+    ?.split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
 
-      quillRef.current.root.innerHTML = htmlContent;
-    }
-  }, [summary, loading]);
+  const hasSummary = renderedSummary?.length > 0;
 
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-100 shadow-soft p-6 mb-8">
-      <div className="flex items-center gap-2 mb-4">
-        <span className="material-symbols-outlined text-blue-600">summarize</span>
-        <h2 className="text-xl font-bold text-slate-900">Bản tin tổng hợp</h2>
+    <div className="summary-panel overflow-hidden border-2 border-black bg-white p-6 shadow-[10px_10px_0px_0px_rgba(0,0,0,0.04)] md:p-7">
+      <div className="mb-6 flex items-center gap-3">
+        <span className="h-[2px] w-8 bg-black" />
+        <h2 className="text-xs font-black uppercase tracking-[0.22em] text-black">Bản tóm tắt AI</h2>
         {loading ? (
-          <span className="ml-auto text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full font-medium animate-pulse">
+          <span className="ml-auto rounded-full border border-black/20 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-black animate-pulse">
             Đang tóm tắt...
           </span>
         ) : totalArticles ? (
-          <span className="ml-auto text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-m font-medium">
+          <span className="ml-auto rounded-full border border-black/20 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-black">
             {totalArticles} bài
           </span>
         ) : null}
       </div>
+
+      {onResummarize ? (
+        <div className="mb-6 flex justify-end">
+          <button
+            type="button"
+            onClick={onResummarize}
+            disabled={resummarizeDisabled}
+            className="flex items-center gap-2 rounded-full border border-black bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black transition-all hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <span className={`material-symbols-outlined text-sm ${loading ? 'animate-spin' : ''}`}>
+              {loading ? 'progress_activity' : 'autorenew'}
+            </span>
+            Re-summary hôm nay
+          </button>
+        </div>
+      ) : null}
       
       {loading ? (
-        <div className="bg-white rounded-md border border-gray-200 p-8 text-center">
-          <span className="material-symbols-outlined text-4xl text-blue-500 animate-spin">progress_activity</span>
-          <p className="text-slate-600 mt-4">AI đang phân tích và tóm tắt các bài báo...</p>
+        <div className="space-y-4 rounded-lg border border-black/10 bg-slate-50 p-5">
+          <div className="flex items-center gap-3 text-slate-600">
+            <span className="material-symbols-outlined summary-spin text-2xl">progress_activity</span>
+            <p className="text-sm font-semibold">Đang tạo bản tóm tắt thông minh...</p>
+          </div>
+          <div className="summary-shimmer h-3 rounded" />
+          <div className="summary-shimmer h-3 w-[88%] rounded" />
+          <div className="summary-shimmer h-3 w-[76%] rounded" />
+          <div className="summary-shimmer h-3 w-[82%] rounded" />
+        </div>
+      ) : !hasSummary ? (
+        <div className="rounded-lg border border-dashed border-black/20 bg-slate-50 p-5 text-center">
+          <span className="material-symbols-outlined text-4xl text-black/25">auto_awesome</span>
+          <p className="mt-3 text-sm font-medium text-slate-500">
+            Chọn hoặc tìm kiếm tin tức để tạo bản tóm tắt.
+          </p>
         </div>
       ) : (
-        <>
-          <div className="bg-white rounded-md border border-gray-200">
-            <div 
-              ref={editorRef} 
-              className="prose prose-slate max-w-none"
-              style={{ 
-                minHeight: '200px',
-                fontSize: '15px',
-                lineHeight: '1.7'
-              }}
-            />
+        <div>
+          <div className="max-h-[48vh] space-y-3 overflow-y-auto pr-1 text-[15px] font-medium leading-relaxed text-slate-600 md:text-base">
+            {renderedSummary?.map((line, index) => (
+              <p key={`${index}-${line}`} className={/^\d+\./.test(line) ? 'font-semibold text-black' : ''}>
+                {line}
+              </p>
+            ))}
           </div>
-          
-          <div className="mt-4 flex items-center gap-4">
-            <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium transition-colors group shadow-sm">
-              <span className="material-symbols-outlined text-lg">volume_up</span>
+
+          <div className="mt-8 flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              className="flex items-center gap-3 bg-black px-8 py-4 text-xs font-black uppercase tracking-[0.15em] text-white transition-all hover:bg-slate-800"
+            >
+              <span className="material-symbols-outlined text-lg">play_arrow</span>
               Nghe bản tin
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 text-slate-700 border border-gray-200 rounded-md text-sm font-medium transition-colors">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="flex items-center gap-3 border-2 border-black bg-white px-8 py-4 text-xs font-black uppercase tracking-[0.15em] text-black transition-all hover:bg-slate-50"
+            >
               <span className="material-symbols-outlined text-lg">content_copy</span>
-              Sao chép
+              {copied ? 'Đã sao chép' : 'Sao chép tóm tắt'}
             </button>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+
+<html class="light" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-background": "#000000",
+                    "inverse-surface": "#1a1c1e",
+                    "on-tertiary-fixed-variant": "#2d3243",
+                    "inverse-on-surface": "#ffffff",
+                    "on-secondary-container": "#1e293b",
+                    "error-container": "#ffdad6",
+                    "on-primary": "#ffffff",
+                    "background": "#ffffff",
+                    "surface-variant": "#f1f5f9",
+                    "surface-container-low": "#ffffff",
+                    "surface-container-lowest": "#ffffff",
+                    "error": "#ba1a1a",
+                    "surface-bright": "#ffffff",
+                    "surface-container-highest": "#e2e8f0",
+                    "on-surface": "#000000",
+                    "on-surface-variant": "#334155",
+                    "primary-container": "#000000",
+                    "on-error-container": "#93000a",
+                    "surface-tint": "#000000",
+                    "on-tertiary-fixed": "#0f172a",
+                    "outline-variant": "#e2e8f0",
+                    "on-primary-container": "#000000",
+                    "primary-fixed": "#f1f5f9",
+                    "on-primary-fixed-variant": "#000000",
+                    "secondary-fixed-dim": "#94a3b8",
+                    "on-secondary-fixed": "#0f172a",
+                    "tertiary-fixed-dim": "#94a3b8",
+                    "surface": "#ffffff",
+                    "secondary-fixed": "#f1f5f9",
+                    "surface-container-high": "#f8fafc",
+                    "surface-container": "#f1f5f9",
+                    "tertiary-fixed": "#f1f5f9",
+                    "on-tertiary-container": "#334155",
+                    "on-secondary": "#ffffff",
+                    "surface-dim": "#f1f5f9",
+                    "secondary-container": "#f1f5f9",
+                    "secondary": "#475569",
+                    "tertiary": "#000000",
+                    "on-error": "#ffffff",
+                    "on-tertiary": "#ffffff",
+                    "outline": "#000000",
+                    "on-secondary-fixed-variant": "#1e293b",
+                    "tertiary-container": "#000000",
+                    "primary": "#000000",
+                    "primary-fixed-dim": "#cbd5e1",
+                    "on-primary-fixed": "#000000",
+                    "inverse-primary": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .sidebar-border { border-right: 1.5px solid #000000; }
+        .search-shadow { shadow: 0 4px 20px -2px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body class="bg-white text-black flex min-h-screen">
+<!-- SideNavBar: Modified to only show History -->
+<aside class="fixed left-0 top-0 h-full flex flex-col p-8 bg-white w-72 border-r border-black/10 z-50">
+<div class="flex items-center gap-3 mb-12">
+<div class="w-10 h-10 bg-black flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-2xl" style="font-variation-settings: 'FILL' 1;">neurology</span>
+</div>
+<div>
+<h1 class="text-xl font-extrabold tracking-tighter text-black uppercase leading-none">NewsAI</h1>
+<p class="text-[10px] text-slate-500 font-bold tracking-[0.2em] uppercase mt-1">Digital Curator</p>
+</div>
+</div>
+<div class="flex flex-col flex-1">
+<div class="mb-6">
+<h3 class="text-[12px] font-black text-black uppercase tracking-[0.15em] mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">history</span>
+                Lịch sử tìm kiếm
+            </h3>
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-slate-50 group cursor-pointer transition-all">
+<span class="material-symbols-outlined text-lg opacity-40 group-hover:opacity-100 group-hover:text-black">history</span>
+<span class="text-sm font-medium text-slate-600 group-hover:text-black truncate">Trí tuệ nhân tạo 2024...</span>
+</div>
+<div class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-slate-50 group cursor-pointer transition-all">
+<span class="material-symbols-outlined text-lg opacity-40 group-hover:opacity-100 group-hover:text-black">history</span>
+<span class="text-sm font-medium text-slate-600 group-hover:text-black truncate">Công nghệ bán dẫn...</span>
+</div>
+<div class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-slate-50 group cursor-pointer transition-all">
+<span class="material-symbols-outlined text-lg opacity-40 group-hover:opacity-100 group-hover:text-black">history</span>
+<span class="text-sm font-medium text-slate-600 group-hover:text-black truncate">Xe điện và AI...</span>
+</div>
+<div class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-slate-50 group cursor-pointer transition-all">
+<span class="material-symbols-outlined text-lg opacity-40 group-hover:opacity-100 group-hover:text-black">history</span>
+<span class="text-sm font-medium text-slate-600 group-hover:text-black truncate">Thị trường chip toàn cầu</span>
+</div>
+<div class="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-slate-50 group cursor-pointer transition-all">
+<span class="material-symbols-outlined text-lg opacity-40 group-hover:opacity-100 group-hover:text-black">history</span>
+<span class="text-sm font-medium text-slate-600 group-hover:text-black truncate">Mô hình ngôn ngữ lớn...</span>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-auto border-t border-slate-100 pt-6">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-black hover:bg-slate-50 rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-sm font-bold">Cài đặt</span>
+</a>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 ml-72 p-12 max-w-7xl">
+<!-- Header / Search -->
+<header class="mb-16">
+<div class="max-w-3xl mx-auto">
+<div class="relative group">
+<div class="absolute inset-y-0 left-6 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-black font-bold">search</span>
+</div>
+<input class="w-full pl-16 pr-32 py-5 bg-white rounded-full border-2 border-black focus:ring-0 focus:border-black text-lg font-medium placeholder:text-slate-300 transition-all shadow-[8px_8px_0px_0px_rgba(0,0,0,0.05)]" placeholder="Khám phá tin tức AI thế giới..." type="text"/>
+<div class="absolute inset-y-0 right-3 flex items-center">
+<button class="bg-black text-white px-8 py-3 rounded-full font-bold text-sm hover:bg-slate-800 transition-colors uppercase tracking-wider">Tìm kiếm</button>
+</div>
+</div>
+<!-- Filters & Voice Selection -->
+<div class="flex items-center justify-center gap-4 mt-8">
+<!-- Refined Voice Selection UI -->
+<div class="relative group/voice">
+<button class="flex items-center gap-3 px-5 py-2.5 bg-white border border-black/10 hover:border-black rounded-full text-xs font-bold text-black uppercase tracking-widest transition-all">
+<span class="material-symbols-outlined text-sm">record_voice_over</span>
+<span>Giọng đọc: Nam (Bắc)</span>
+<span class="material-symbols-outlined text-sm">expand_more</span>
+</button>
+<!-- Tooltip-style accessible dropdown indicator (visual only) -->
+<div class="hidden group-hover/voice:block absolute top-full mt-2 left-0 w-48 bg-white border border-black p-2 z-20 shadow-xl">
+<div class="text-[10px] font-black text-slate-400 p-2 border-b border-slate-100 mb-1">CHỌN GIỌNG NÓI</div>
+<div class="p-2 hover:bg-slate-50 text-xs font-bold cursor-pointer">Nam (Miền Bắc)</div>
+<div class="p-2 hover:bg-slate-50 text-xs font-bold cursor-pointer">Nữ (Miền Bắc)</div>
+<div class="p-2 hover:bg-slate-50 text-xs font-bold cursor-pointer">Nam (Miền Nam)</div>
+<div class="p-2 hover:bg-slate-50 text-xs font-bold cursor-pointer">Nữ (Miền Nam)</div>
+</div>
+</div>
+<button class="flex items-center gap-2 px-5 py-2.5 bg-white border border-black/10 hover:border-black rounded-full text-xs font-bold text-black uppercase tracking-widest transition-all">
+<span>Thời gian</span>
+<span class="material-symbols-outlined text-sm">expand_more</span>
+</button>
+<button class="flex items-center gap-2 px-5 py-2.5 bg-white border border-black/10 hover:border-black rounded-full text-xs font-bold text-black uppercase tracking-widest transition-all">
+<span>Nguồn tin</span>
+<span class="material-symbols-outlined text-sm">expand_more</span>
+</button>
+<div class="h-4 w-px bg-black/10 mx-2"></div>
+<button class="p-2.5 text-black hover:bg-black hover:text-white rounded-full transition-all">
+<span class="material-symbols-outlined text-lg">tune</span>
+</button>
+</div>
+</div>
+</header>
+<!-- AI Summary Card -->
+<section class="mb-20">
+<div class="relative p-10 border-2 border-black bg-white overflow-hidden shadow-[12px_12px_0px_0px_rgba(0,0,0,0.03)]">
+<div class="relative z-10 flex flex-col md:flex-row gap-12 items-start">
+<div class="flex-1">
+<div class="flex items-center gap-3 mb-6">
+<span class="w-8 h-[2px] bg-black"></span>
+<h2 class="text-xs font-black text-black tracking-[0.3em] uppercase">Bản tin tổng hợp thông minh</h2>
+</div>
+<h3 class="text-4xl font-black tracking-tighter mb-6 text-black leading-[1.1]">Xu hướng Trí tuệ Nhân tạo nổi bật trong tuần qua</h3>
+<p class="text-slate-600 leading-relaxed mb-10 text-lg max-w-2xl font-medium">
+                        Trong tuần này, thế giới AI chứng kiến sự bùng nổ của các mô hình đa phương thức mới. Nổi bật là việc tích hợp sâu rộng AI vào các hệ điều hành, giúp tối ưu hóa hiệu suất làm việc. Các chuyên gia dự báo một làn sóng ứng dụng AI trong y tế và giáo dục sẽ sớm định hình lại thị trường lao động toàn cầu.
+                    </p>
+<div class="flex items-center gap-6">
+<button class="flex items-center gap-3 px-8 py-4 bg-black text-white font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all">
+<span class="material-symbols-outlined text-lg">play_arrow</span>
+<span>Nghe bản tin</span>
+</button>
+<button class="flex items-center gap-3 px-8 py-4 bg-white border-2 border-black text-black font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all">
+<span class="material-symbols-outlined text-lg">content_copy</span>
+<span>Sao chép tóm tắt</span>
+</button>
+</div>
+</div>
+<div class="hidden lg:block w-64 h-64 border-2 border-black p-2 bg-white">
+<img alt="AI Synthesis" class="w-full h-full object-cover" data-alt="Abstract visualization of flowing blue digital data particles and neural networks in a sleek modern style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPtG9V8FkdCJxYYB-g3a27zd2Q7qGIX7PG1WlAwbscyhXpUznOkB_GA2ordqiEKnf5OdZwRePEGbsLPDJ36SXAv4C5ZakI3x2jfn3dzD13Jxpm4Cmbv5WcVmwIyOyxLLsAr2lpERlnbG0DclD_21vnn7IUnoiPEV1uIU46cNeDmznaAg6tCyDFw8W-6Pu7q0pHXVVUvUm7OgwyNZHdeET3j8FA0hsdhev4S6KOSQpQdDFPYPjcVoQCUDUFxReeJhXelUKNgFFqVEc"/>
+</div>
+</div>
+</div>
+</section>
+<!-- News Feed -->
+<section>
+<div class="flex items-center justify-between mb-10 border-b border-black pb-4">
+<h2 class="text-2xl font-black tracking-tight uppercase">Kết quả tìm kiếm</h2>
+<div class="flex items-center gap-2 text-[10px] font-black text-black tracking-[0.2em] uppercase">
+<span>Sắp xếp: Mới nhất</span>
+<span class="material-symbols-outlined text-sm">swap_vert</span>
+</div>
+</div>
+<div class="space-y-12">
+<!-- News Card 1 -->
+<article class="group flex gap-10">
+<div class="w-60 h-40 flex-shrink-0 border border-black overflow-hidden bg-slate-100">
+<img alt="Technology News" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105" data-alt="High-tech server room with glowing blue led lights on hardware equipment, futuristic data center aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9HFilry0fIyC3DscauYjLBcnhk2gl5Odd_uLVbvtY90cpTN2aXlsOKS7yEkjCUtrpNzRXiVbjbyVXvJGS4ahkxe037N8aEsr6wK4wKW5LXD2bZ0_K-T4tvCwwESnm9l-A3JdhJxnTxQZD8kTAFS9yfel-cyYFaA7EvGIq8mwtIvWU5tUPjXpne00x5VlwmLld5NL6tiLACi-ShbTTQlpeyJweUfxOG1QBLq4KFHPmYcq3e118hnCfC0YncPcPtL3McTRLlVlolxk"/>
+</div>
+<div class="flex-1 flex flex-col">
+<div class="flex items-center gap-3 mb-4">
+<span class="text-[10px] font-black px-2 py-0.5 border border-black bg-black text-white tracking-widest uppercase">Tin tức</span>
+<span class="text-xs font-bold text-black">VnExpress</span>
+<span class="w-1 h-1 bg-black rounded-full"></span>
+<span class="text-xs font-bold text-slate-400">2 giờ trước</span>
+</div>
+<h3 class="text-2xl font-black tracking-tight mb-3 group-hover:underline underline-offset-4 decoration-2">OpenAI giới thiệu mô hình ngôn ngữ mới với khả năng suy luận vượt bậc</h3>
+<p class="text-slate-500 text-sm line-clamp-2 leading-relaxed font-medium mb-6">
+                        Mô hình mới tập trung vào việc giải quyết các bài toán logic phức tạp và khả năng lập trình, hứa hẹn sẽ làm thay đổi cách thức các kỹ sư tương tác với trí tuệ nhân tạo.
+                    </p>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex items-center gap-8">
+<button class="text-[11px] font-black uppercase tracking-widest text-black hover:opacity-60 flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">article</span>
+                                Đọc bài gốc
+                            </button>
+<button class="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-black flex items-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-lg">volume_up</span>
+                                Nghe tóm tắt
+                            </button>
+</div>
+<button class="p-2 text-black hover:bg-slate-50 rounded-full">
+<span class="material-symbols-outlined">share</span>
+</button>
+</div>
+</div>
+</article>
+<!-- News Card 2 -->
+<article class="group flex gap-10">
+<div class="w-60 h-40 flex-shrink-0 border border-black overflow-hidden bg-slate-100">
+<img alt="AI Hardware" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105" data-alt="Futuristic humanoid robot hand interacting with a digital interface glowing in a dark room" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAjjSXaNjdLwChMYhTZkgB7BuzocVKjtPv7XYW6p89zn_HfvHY7tkkSf6tKNjgKAYfqavBPy77KhvgPVSEqHzRmj4Gz-fKlP8GPA9UnA7sASg8TNZ_LeS3l-lWxK_QHncQCJMV96tQ_U9igGUQ_8ErxBrXKp5pFmZ_Vckw996viWOvYgidpJrxTsQgRKfhgqe-u-EciSu4d7MTfMK8F_pZATC9xMNCjRgrMS53u8EiDTKLTI0Kyayo9fRjotulO0V2zzFadmeZWw50"/>
+</div>
+<div class="flex-1 flex flex-col">
+<div class="flex items-center gap-3 mb-4">
+<span class="text-[10px] font-black px-2 py-0.5 border border-black bg-black text-white tracking-widest uppercase">Công nghệ</span>
+<span class="text-xs font-bold text-black">TechCrunch</span>
+<span class="w-1 h-1 bg-black rounded-full"></span>
+<span class="text-xs font-bold text-slate-400">5 giờ trước</span>
+</div>
+<h3 class="text-2xl font-black tracking-tight mb-3 group-hover:underline underline-offset-4 decoration-2">Cuộc đua chip AI: NVIDIA tiếp tục thống trị thị trường toàn cầu</h3>
+<p class="text-slate-500 text-sm line-clamp-2 leading-relaxed font-medium mb-6">
+                        Báo cáo tài chính mới nhất cho thấy doanh thu từ mảng trung tâm dữ liệu của NVIDIA tăng trưởng kỷ lục nhờ nhu cầu đào tạo mô hình AI tăng vọt.
+                    </p>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex items-center gap-8">
+<button class="text-[11px] font-black uppercase tracking-widest text-black hover:opacity-60 flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">article</span>
+                                Đọc bài gốc
+                            </button>
+<button class="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-black flex items-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-lg">volume_up</span>
+                                Nghe tóm tắt
+                            </button>
+</div>
+<button class="p-2 text-black hover:bg-slate-50 rounded-full">
+<span class="material-symbols-outlined">share</span>
+</button>
+</div>
+</div>
+</article>
+</div>
+<div class="mt-20 text-center">
+<button class="px-12 py-5 border-2 border-black bg-white text-black font-black text-xs uppercase tracking-[0.2em] hover:bg-black hover:text-white transition-all">Tải thêm tin mới</button>
+</div>
+</section>
+</main>
+</body></html>

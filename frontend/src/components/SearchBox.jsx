@@ -1,57 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
-
-function SearchBox({ onSearch, loading }) {
-    const textareaRef = useRef(null);
-    const [value, setValue] = useState('');
-
-    useEffect(() => {
-        const textarea = textareaRef.current;
-        if (textarea) {
-            const OnInput = function() {
-                this.style.height = 0;
-                this.style.height = (this.scrollHeight) + "px";
-            };
-            
-            textarea.setAttribute("style", "height:" + (textarea.scrollHeight) + "px;overflow-y:hidden;");
-            textarea.addEventListener("input", OnInput, false);
-            
-            return () => {
-                textarea.removeEventListener("input", OnInput, false);
-            };
-        }
-    }, []);
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (value.trim() && onSearch) {
-            onSearch(value.trim());
-        }
+function SearchBox({ value, onChange, onSearch, loading }) {
+    const handleSubmit = (event) => {
+        event.preventDefault();
+        if (!value?.trim() || !onSearch) return;
+        onSearch(value.trim());
     };
 
     return (
-        <form onSubmit={handleSubmit}>
-            <div className="relative group">
-                <div className="absolute inset-0 bg-gray-200 rounded-lg blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
-                <div className="relative bg-white rounded-lg border border-gray-200 shadow-soft p-2 flex items-start gap-2 focus-within:ring-2 focus-within:ring-gray-100 focus-within:border-gray-300 transition-all">
-                    <span className="material-symbols-outlined text-gray-400 p-2 mt-1">search</span>
-                    <textarea 
-                        ref={textareaRef}
+        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-[860px]">
+            <div className="group relative">
+                <div className="pointer-events-none absolute inset-0 rounded-full border-2 border-black/10 transition-all group-focus-within:border-black/40" />
+                <div className="relative flex items-center gap-4 rounded-full border-2 border-black bg-white px-6 py-4 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.05)] transition-all group-hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,0.08)] md:px-9 md:py-5">
+                    <span className="material-symbols-outlined shrink-0 text-black">search</span>
+                    <input
+                        type="text"
                         value={value}
-                        onChange={(e) => setValue(e.target.value)}
+                        onChange={(event) => onChange?.(event.target.value)}
                         disabled={loading}
-                        className="w-full bg-transparent border-0 text-slate-800 placeholder-gray-400 focus:ring-0 resize-none py-3 px-0 text-lg leading-relaxed min-h-[56px]" 
-                        placeholder="Dán liên kết bài báo hoặc nhập từ khóa để tóm tắt..." 
-                        rows="1" 
-                        style={{ fieldSizing: 'content' }}
-                    ></textarea>
-                    <button 
+                        placeholder="Nhập từ khóa hoặc dán URL của tin tức..."
+                        className="w-full border-0 bg-transparent text-base font-medium text-black placeholder:text-slate-400 focus:ring-0 md:text-lg"
+                    />
+                    <button
                         type="submit"
-                        disabled={loading || !value.trim()}
-                        className="flex items-center justify-center h-12 w-12 mt-0.5 rounded-md bg-slate-900 hover:bg-black text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={loading || !value?.trim()}
+                        className="flex shrink-0 items-center gap-2 rounded-full bg-black px-5 py-2.5 text-xs font-black uppercase tracking-[0.15em] text-white transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400 md:px-8"
                     >
-                        <span className="material-symbols-outlined text-xl">
+                        <span className="material-symbols-outlined text-base">
                             {loading ? 'progress_activity' : 'arrow_forward'}
                         </span>
+                        <span className="hidden sm:inline">Tìm kiếm</span>
                     </button>
                 </div>
             </div>

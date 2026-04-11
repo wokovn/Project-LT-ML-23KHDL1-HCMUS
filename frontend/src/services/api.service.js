@@ -1,6 +1,26 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+const API_URL = (() => {
+  const trimmedUrl = rawApiUrl.replace(/\/+$/, '');
+
+  try {
+    const parsedUrl = new URL(trimmedUrl);
+
+    // If only an origin is provided, default to the backend API namespace.
+    if (!parsedUrl.pathname || parsedUrl.pathname === '/') {
+      parsedUrl.pathname = '/api';
+      return parsedUrl.toString().replace(/\/+$/, '');
+    }
+
+    return trimmedUrl;
+  } catch {
+    // Support relative API URLs while keeping explicit path configuration intact.
+    if (!trimmedUrl || trimmedUrl === '.') return '/api';
+    return trimmedUrl.startsWith('/') ? trimmedUrl : `/${trimmedUrl}`;
+  }
+})();
 
 class ApiService {
   constructor() {

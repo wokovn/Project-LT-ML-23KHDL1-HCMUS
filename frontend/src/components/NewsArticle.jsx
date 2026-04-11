@@ -1,67 +1,120 @@
-function NewsArticle({ category, categoryColor, source, timeAgo, title, description, imageUrl, imageAlt, voiceType, articleUrl, onSummarize, summary, summaryVisible, summaryLoading }) {
+import { useState } from 'react';
+
+const TONE_CLASSNAMES = {
+    news: 'bg-black text-white border-black',
+    commerce: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    culture: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    discussion: 'bg-violet-50 text-violet-700 border-violet-200',
+    review: 'bg-pink-50 text-pink-700 border-pink-200',
+    video: 'bg-red-50 text-red-700 border-red-200',
+    generic: 'bg-slate-50 text-slate-700 border-slate-200',
+};
+
+function NewsArticle({ category, categoryTone, source, timeAgo, title, description, imageUrl, imageAlt, articleUrl, onSummarize, summary, summaryVisible, summaryLoading }) {
+    const [copied, setCopied] = useState(false);
     const hasSummary = !!summary;
     const showSummary = hasSummary && summaryVisible;
-    
+    const categoryClasses = TONE_CLASSNAMES[categoryTone] || TONE_CLASSNAMES.generic;
+
+    const handleShare = async () => {
+        if (!articleUrl || articleUrl === '#') return;
+
+        try {
+            await navigator.clipboard.writeText(articleUrl);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1800);
+        } catch {
+            setCopied(false);
+        }
+    };
+
     return (
-        <article className="bg-white rounded-lg border border-gray-100 shadow-soft hover:shadow-md transition-shadow duration-200 p-6 flex flex-col gap-6">
-            <div className="flex flex-col md:flex-row gap-6">
-                <div className="w-full md:w-48 h-48 md:h-auto flex-shrink-0 relative overflow-hidden rounded-md bg-gray-100">
-                    <img 
-                        alt={imageAlt} 
-                        className="w-full h-full object-cover transform hover:scale-105 transition-transform duration-500" 
+        <article className="group flex flex-col gap-6">
+            <div className="flex flex-col gap-6 md:flex-row md:gap-10">
+                <div className="h-44 w-full shrink-0 overflow-hidden border border-black bg-slate-100 md:w-60">
+                    <img
+                        alt={imageAlt}
+                        className="h-full w-full object-cover transition-all duration-700 group-hover:scale-105"
                         src={imageUrl}
                     />
                 </div>
-                <div className="flex-1 space-y-3 flex flex-col justify-between">
-                    <div>
-                        <div className="flex items-center gap-2 mb-2">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${categoryColor} uppercase tracking-wide`}>{category}</span>
-                            <span className="text-xs text-gray-400">• {source} • {timeAgo}</span>
-                        </div>
-                        <h3 className="text-xl font-semibold text-slate-900 leading-snug">{title}</h3>
-                        <p className="text-slate-600 text-sm leading-relaxed line-clamp-3 mt-2">
-                            {description}
-                        </p>
+
+                <div className="flex flex-1 flex-col">
+                    <div className="mb-4 flex flex-wrap items-center gap-3">
+                        <span className={`border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] ${categoryClasses}`}>
+                            {category}
+                        </span>
+                        <span className="text-xs font-bold text-black">{source}</span>
+                        <span className="h-1 w-1 rounded-full bg-black" />
+                        <span className="text-xs font-bold text-slate-400">{timeAgo || 'Vừa xong'}</span>
                     </div>
-                    <div className="flex items-center gap-4 pt-2">
-                        <button 
-                            onClick={onSummarize}
-                            disabled={summaryLoading}
-                            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-sm font-medium transition-colors group disabled:opacity-50 disabled:cursor-not-allowed">
-                            <span className="material-symbols-outlined text-lg group-hover:text-blue-600">
-                                {summaryLoading ? 'progress_activity' : showSummary ? 'expand_less' : 'play_circle'}
-                            </span>
-                            {summaryLoading ? 'Đang tóm tắt...' : showSummary ? 'Thu gọn' : hasSummary ? 'Xem lại' : 'Nghe tóm tắt'}
-                        </button>
-                        <a 
-                            className="text-sm text-gray-500 hover:text-slate-900 underline decoration-gray-300 underline-offset-4" 
-                            href={articleUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            Đọc bài gốc
-                        </a>
+
+                    <h3 className="text-2xl font-black leading-tight tracking-tight text-black transition-all group-hover:underline group-hover:decoration-2 group-hover:underline-offset-4">
+                        {title}
+                    </h3>
+
+                    <p className="mt-3 line-clamp-2 text-sm font-medium leading-relaxed text-slate-500">
+                        {description}
+                    </p>
+
+                    <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex flex-wrap items-center gap-6">
+                            <a
+                                className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.13em] text-black transition-all hover:opacity-60"
+                                href={articleUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                <span className="material-symbols-outlined text-lg">article</span>
+                                Đọc bài gốc
+                            </a>
+
+                            <button
+                                type="button"
+                                onClick={onSummarize}
+                                disabled={summaryLoading}
+                                className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.13em] text-slate-400 transition-all hover:text-black disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                                <span className={`material-symbols-outlined text-lg ${summaryLoading ? 'animate-spin' : ''}`}>
+                                    {summaryLoading ? 'progress_activity' : showSummary ? 'expand_less' : 'volume_up'}
+                                </span>
+                                {summaryLoading ? 'Đang tóm tắt...' : showSummary ? 'Thu gọn tóm tắt' : hasSummary ? 'Xem lại tóm tắt' : 'Nghe tóm tắt'}
+                            </button>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            {copied && (
+                                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600">
+                                    Đã copy
+                                </span>
+                            )}
+                            <button
+                                type="button"
+                                onClick={handleShare}
+                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-black transition-all hover:bg-slate-100"
+                                title="Sao chép link bài viết"
+                            >
+                                <span className="material-symbols-outlined text-base leading-none">{copied ? 'check' : 'share'}</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
-            
-            {/* Summary section */}
+
             {(summaryLoading || showSummary) && (
-                <div className="border-t border-gray-100 pt-4 mt-2">
+                <div className="border-l-2 border-black bg-slate-50 px-5 py-4">
                     {summaryLoading ? (
-                        <div className="bg-blue-50 rounded-md border border-blue-100 p-6 text-center">
-                            <span className="material-symbols-outlined text-3xl text-blue-500 animate-spin">progress_activity</span>
-                            <p className="text-slate-600 mt-3 text-sm">Đang tóm tắt bài viết...</p>
+                        <div className="flex items-center gap-3 text-sm font-medium text-slate-600">
+                            <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                            Đang tóm tắt bài viết...
                         </div>
-                    ) : summary && (
-                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-md border border-blue-100 p-5">
-                            <div className="flex items-center gap-2 mb-3">
-                                <span className="material-symbols-outlined text-blue-600 text-sm">summarize</span>
-                                <h4 className="text-sm font-semibold text-slate-900">Tóm tắt</h4>
+                    ) : (
+                        <div>
+                            <div className="mb-2 flex items-center gap-2">
+                                <span className="material-symbols-outlined text-base text-black">summarize</span>
+                                <h4 className="text-xs font-black uppercase tracking-[0.14em] text-black">Tóm tắt nhanh</h4>
                             </div>
-                            <div className="bg-white rounded p-4 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
-                                {summary}
-                            </div>
+                            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{summary}</p>
                         </div>
                     )}
                 </div>
