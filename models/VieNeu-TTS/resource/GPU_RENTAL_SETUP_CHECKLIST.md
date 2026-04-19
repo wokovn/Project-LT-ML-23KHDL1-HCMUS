@@ -1,14 +1,14 @@
-# GPU Rental Setup Checklist - VieNeu-TTS Fine-tuning
+# Checklist Thiết Lập Máy GPU Thuê - Fine-tune VieNeu-TTS
 
-Checklist nay duoc viet cho bai toan fine-tune 1 huong duy nhat: VieNeu-TTS.
+Checklist này được viết cho bài toán fine-tune một hướng duy nhất: VieNeu-TTS.
 
-## 0) Nguon co dinh cua bai toan
+## 0) Nguồn cố định của bài toán
 
 - Dataset: https://www.kaggle.com/datasets/nhtlnguyn1106/xttsv2-finetuning-data-20260417
 - Model: https://huggingface.co/pnnbao-ump/VieNeu-TTS
-- Dataset tren Kaggle dang o muc ~7.81 GB (xem Data Explorer).
+- Dataset trên Kaggle đang ở mức ~7.81 GB (xem Data Explorer).
 
-## 1) Cau hinh may thue muc tieu (theo Workflow)
+## 1) Cấu hình máy thuê mục tiêu (theo Workflow)
 
 - GPU: 1x RTX 3090 (24 GB VRAM)
 - CPU: Xeon E5-2630 v4 (20 cores)
@@ -16,35 +16,35 @@ Checklist nay duoc viet cho bai toan fine-tune 1 huong duy nhat: VieNeu-TTS.
 - Disk: 591 GB
 - CUDA: 12.6
 
-Nhan xet: Cau hinh tren la du va thoai mai cho VieNeu-TTS fine-tune theo 3 phase.
+Nhận xét: Cấu hình trên đủ và thoải mái cho VieNeu-TTS fine-tune theo 3 phase.
 
-## 2) Uoc luong dung luong dia can thue (dataset ~8 GB)
+## 2) Ước lượng dung lượng đĩa cần thuê (dataset ~8 GB)
 
-### Uoc luong theo thanh phan
+### Ước lượng theo thành phần
 
-- Dataset zip/ban dau: 8-10 GB
-- Du lieu sau giai nen + ban preprocess (resample/trim): 20-35 GB
-- Checkpoints (top-k + last, co optimizer state): 40-90 GB
-- Moi truong Python + pip cache + HuggingFace cache: 15-30 GB
-- Logs, audio mau moi epoch, ket qua danh gia: 5-15 GB
+- Dataset zip/ban đầu: 8-10 GB
+- Dữ liệu sau giải nén + bản preprocess (resample/trim): 20-35 GB
+- Checkpoints (top-k + last, có optimizer state): 40-90 GB
+- Môi trường Python + pip cache + HuggingFace cache: 15-30 GB
+- Logs, audio mẫu mỗi epoch, kết quả đánh giá: 5-15 GB
 
-Tong thuc te thuong roi vao khoang 88-180 GB.
+Tổng thực tế thường rơi vào khoảng 88-180 GB.
 
-### Khuyen nghi goi dung luong
+### Khuyến nghị gói dung lượng
 
-- Toi thieu co the chay: 120 GB (rat sat, de day o)
-- Muc an toan nen thue: 200 GB tro len
-- Muc rat thoai mai cho nhieu lan thu: 300 GB tro len
+- Tối thiểu có thể chạy: 120 GB (rất sát, dễ đầy ổ)
+- Mức an toàn nên thuê: 200 GB trở lên
+- Mức rất thoải mái cho nhiều lần thử: 300 GB trở lên
 
-Voi may 591 GB trong workflow: du rong rai, khong can nang cap them disk.
+Với máy 591 GB trong workflow: đủ rộng rãi, không cần nâng cấp thêm disk.
 
-## 3) He dieu hanh va Python
+## 3) Hệ điều hành và Python
 
-- OS khuyen nghi: Ubuntu 22.04 LTS
-- Python khuyen nghi: 3.10 hoac 3.11
-- Khong dung Python 3.13 cho stack TTS de tranh loi cai dat goi
+- OS khuyến nghị: Ubuntu 22.04 LTS
+- Python khuyến nghị: 3.10 hoặc 3.11
+- Không dùng Python 3.13 cho stack TTS để tránh lỗi cài đặt gói
 
-## 4) Lenh khoi tao nhanh tren may thue (Linux)
+## 4) Lệnh khởi tạo nhanh trên máy thuê (Linux)
 
 ```bash
 sudo apt update
@@ -57,54 +57,54 @@ source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
 ```
 
-Neu chua co python3.10:
+Nếu chưa có python3.10:
 
 ```bash
 sudo apt install -y python3.10 python3.10-venv
 ```
 
-## 5) Cai PyTorch cho GPU
+## 5) Cài PyTorch cho GPU
 
-CUDA driver 12.6 co the chay wheel cu121/cu124.
+CUDA driver 12.6 có thể chạy wheel cu121/cu124.
 
 ```bash
-# Lua chon phu hop va giu co dinh cho ca project
+# Lựa chọn phù hợp và giữ cố định cho cả project
 pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124
 ```
 
-## 6) Cai thu vien huan luyen
+## 6) Cài thư viện huấn luyện
 
 ```bash
 pip install pandas numpy scipy librosa soundfile matplotlib pyyaml tqdm
 pip install datasets evaluate jiwer tensorboard wandb kaggle huggingface_hub
 
-# Luu y: dung goi TTS (chu hoa), khong dung tts
+# Lưu ý: dùng gói TTS (chữ hoa), không dùng tts
 pip install TTS==0.22.0
 ```
 
-Neu TTS 0.22.0 loi, dung fallback:
+Nếu TTS 0.22.0 lỗi, dùng fallback:
 
 ```bash
 pip install git+https://github.com/coqui-ai/TTS.git
 ```
 
-## 7) Tai dataset va model theo link co san
+## 7) Tải dataset và model theo link có sẵn
 
-### 7.1 Dataset tu Kaggle
+### 7.1 Dataset từ Kaggle
 
 ```bash
 mkdir -p data/raw data/xtts
 kaggle datasets download -d nhtlnguyn1106/xttsv2-finetuning-data-20260417 -p data/raw --unzip
 ```
 
-### 7.2 Model tu Hugging Face
+### 7.2 Model từ Hugging Face
 
 ```bash
 python -m pip install -U huggingface_hub[hf_transfer]
 huggingface-cli download pnnbao-ump/VieNeu-TTS --local-dir models/pretrained/VieNeu-TTS
 ```
 
-## 8) Sanity check truoc khi train
+## 8) Sanity check trước khi train
 
 ```bash
 python - << 'PY'
@@ -121,51 +121,51 @@ nvidia-smi
 df -h
 ```
 
-## 9) Checklist du lieu truoc khi huan luyen
+## 9) Checklist dữ liệu trước khi huấn luyện
 
-- Chot sample rate duy nhat theo config train (khuyen nghi 24000 Hz), mono.
-- Xac nhan file split co dinh: train_wav.csv, eval.csv, test_wav.csv.
-- Khong reshuffle split giua cac lan chay.
-- Kiem tra trung lap va leakage (neu co nhieu speaker thi uu tien tach theo speaker).
-- Chuan hoa transcript (so, viet tat, dau cau) nhat quan.
+- Chốt sample rate duy nhất theo config train (khuyến nghị 24000 Hz), mono.
+- Xác nhận file split cố định: train_wav.csv, eval.csv, test_wav.csv.
+- Không reshuffle split giữa các lần chạy.
+- Kiểm tra trùng lặp và leakage (nếu có nhiều speaker thì ưu tiên tách theo speaker).
+- Chuẩn hóa transcript (số, viết tắt, dấu câu) nhất quán.
 
-## 10) Runtime goi y cho RTX 3090 24 GB
+## 10) Runtime gợi ý cho RTX 3090 24 GB
 
 - Mixed precision: fp16
 - Gradient accumulation: 2-8
 - Save top-k checkpoints: k=3
-- Luu optimizer state de chuyen phase 2 -> phase 3 muot hon
-- Dung early stopping theo validation loss
+- Lưu optimizer state để chuyển phase 2 -> phase 3 mượt hơn
+- Dùng early stopping theo validation loss
 
-## 11) Chay train an toan bang tmux
+## 11) Chạy train an toàn bằng tmux
 
 ```bash
 tmux new -s tts_train
-# chay lenh train
-# bam Ctrl+B roi bam D de detach
+# chạy lệnh train
+# bấm Ctrl+B rồi bấm D để detach
 ```
 
-## 12) Chinh sach log va luu tru
+## 12) Chính sách log và lưu trữ
 
-Can luu day du moi run:
+Cần lưu đầy đủ mỗi run:
 
 - train_loss/val_loss theo epoch
-- metric danh gia (MCD, WER/CER, MOS)
-- audio mau tu tap cau co dinh moi epoch
+- metric đánh giá (MCD, WER/CER, MOS)
+- audio mẫu từ tập câu cố định mỗi epoch
 - top-k checkpoint + last checkpoint
-- file config run + thong tin moi truong (python/cuda/torch/TTS)
+- file config run + thông tin môi trường (python/cuda/torch/TTS)
 
-## 13) Loi thuong gap
+## 13) Lỗi thường gặp
 
-- pip install tts loi: thuong do sai Python version hoac sai ten goi. Dung Python 3.10/3.11 va cai TTS.
-- CUDA OOM: giam batch, tang grad accumulation, giam do dai audio.
-- Toc do data loader cham: dat du lieu tren SSD, tinh chinh num_workers.
-- Audio re/robot: kiem tra lai sample rate, trim silence, transcript.
+- pip install tts lỗi: thường do sai Python version hoặc sai tên gói. Dùng Python 3.10/3.11 và cài TTS.
+- CUDA OOM: giảm batch, tăng grad accumulation, giảm độ dài audio.
+- Tốc độ data loader chậm: đặt dữ liệu trên SSD, tinh chỉnh num_workers.
+- Audio rè/robot: kiểm tra lại sample rate, trim silence, transcript.
 
-## 14) File can mang theo khi chuyen may
+## 14) File cần mang theo khi chuyển máy
 
 - models/VieNeu-TTS/resource/Workflow.md
 - models/VieNeu-TTS/resource/Báo cáo.md
 - models/VieNeu-TTS/resource/link.txt
-- training config dang dung
-- metadata checkpoint tot nhat (epoch, val loss, metric)
+- training config đang dùng
+- metadata checkpoint tốt nhất (epoch, val loss, metric)

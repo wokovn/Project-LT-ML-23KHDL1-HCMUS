@@ -1,0 +1,5 @@
+Xin chào, tôi đang thử nghiệm mô hình chuyển văn bản thành giọng nói.
+Tôi muốn kiểm tra cách mô hình ngắt câu và giữ nhịp tự nhiên.
+Trong buổi sáng hôm nay, trời đẹp và không khí rất dễ chịu.
+Nếu hệ thống ổn định, chúng ta sẽ tiếp tục phase huấn luyện tiếp theo.
+Đây là câu kiểm tra cuối cùng để đánh giá chất lượng âm thanh mỗi epoch.

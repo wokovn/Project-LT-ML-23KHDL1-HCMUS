@@ -11,7 +11,7 @@ paths:
   eval_csv: eval.csv
   test_csv: test_wav.csv
   output_root: runs/vieneu_tts
-  fixed_sentences_file: models/VieNeu-TTS/resource/templates/fixed_sentences.txt
+  fixed_sentences_file: models/VieNeu-TTS/templates/fixed_sentences.txt
 
 audio_alignment:
   expected_sample_rate: 24000
@@ -81,6 +81,7 @@ phases:
   phase2:
     name: full_finetune
     enabled: true
+    # Start with 8 epochs as a baseline, then extend to 10-15 if val_loss is still improving.
     epochs: 8
     learning_rate: 5.0e-6
     scheduler: cosine
