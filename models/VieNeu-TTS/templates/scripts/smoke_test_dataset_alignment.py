@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import random
 import sys
 from pathlib import Path
@@ -35,13 +36,31 @@ def detect_column(fieldnames: list[str], candidates: list[str]) -> str | None:
     return None
 
 
+def _detect_delimiter(text: str) -> str:
+    sample = text[:8192]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",|;\t")
+        return dialect.delimiter
+    except csv.Error:
+        first_line = sample.splitlines()[0] if sample else ""
+        for candidate in ("|", ",", ";", "\t"):
+            if candidate in first_line:
+                return candidate
+        return ","
+
+
 def read_csv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        if reader.fieldnames is None:
-            raise ValueError(f"CSV has no header: {path}")
-        rows = list(reader)
-        return list(reader.fieldnames), rows
+    raw_text = path.read_text(encoding="utf-8-sig")
+    if not raw_text.strip():
+        raise ValueError(f"CSV is empty: {path}")
+
+    delimiter = _detect_delimiter(raw_text)
+    reader = csv.DictReader(io.StringIO(raw_text), delimiter=delimiter)
+    if reader.fieldnames is None:
+        raise ValueError(f"CSV has no header: {path}")
+
+    rows = list(reader)
+    return list(reader.fieldnames), rows
 
 
 def resolve_audio_path(data_root: Path, raw: str) -> Path:

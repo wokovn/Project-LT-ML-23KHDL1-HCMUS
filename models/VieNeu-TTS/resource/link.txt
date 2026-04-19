@@ -1,0 +1,2 @@
+Dataset: https://www.kaggle.com/datasets/nhtlnguyn1106/xttsv2-finetuning-data-20260417
+Model: https://huggingface.co/pnnbao-ump/VieNeu-TTS

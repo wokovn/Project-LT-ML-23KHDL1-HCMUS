@@ -1,0 +1,10 @@
+# Full training requirements for VieNeu-TTS
+# IMPORTANT: use Python 3.10 or 3.11 for this file.
+
+-r requirements.txt
+
+# Force install TTS for training (requires Python < 3.12)
+TTS==0.22.0
+
+# Optional: if TTS wheel fails in your environment, use source fallback:
+# git+https://github.com/coqui-ai/TTS.git

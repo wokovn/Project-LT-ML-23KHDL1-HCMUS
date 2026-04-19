@@ -1,4 +1,5 @@
-# 3-phase fine-tuning template for VieNeu-TTS (single-model scope)
+# 3-phase fine-tuning config for rented RTX 3090 (24GB)
+# Use this config on Linux remote machines (VS Code Remote SSH).
 
 project:
   name: vieneu_tts_finetune
@@ -6,7 +7,8 @@ project:
 
 paths:
   pretrained_model_dir: models/pretrained/VieNeu-TTS
-  data_root: D:/HCMUS/data_project_LT/xtts_stage2_24k_mono
+  # Update this path to the normalized dataset location on the remote machine.
+  data_root: data/xtts_stage2_24k_mono
   train_csv: train_wav.csv
   eval_csv: eval.csv
   test_csv: test_wav.csv
@@ -43,7 +45,9 @@ reproducibility:
 runtime:
   device: cuda
   precision: fp16
+  # Safe default for single RTX 3090. Adjust to 2-8 based on your batch size.
   gradient_accumulation_steps: 4
+  # CPU 16/32 cores -> 8 workers is a good starting point.
   dataloader_num_workers: 8
   dataloader_pin_memory: true
   gradient_clip_norm: 1.0
@@ -81,7 +85,6 @@ phases:
   phase2:
     name: full_finetune
     enabled: true
-    # Start with 8 epochs as a baseline, then extend to 10-15 if val_loss is still improving.
     epochs: 8
     learning_rate: 5.0e-6
     scheduler: cosine
