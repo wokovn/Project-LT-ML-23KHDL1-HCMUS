@@ -10,10 +10,29 @@ const TONE_CLASSNAMES = {
     generic: 'bg-slate-50 text-slate-700 border-slate-200',
 };
 
-function NewsArticle({ category, categoryTone, source, timeAgo, title, description, imageUrl, imageAlt, articleUrl, onSummarize, summary, summaryVisible, summaryLoading }) {
+function NewsArticle({
+    category,
+    categoryTone,
+    source,
+    timeAgo,
+    title,
+    description,
+    imageUrl,
+    imageAlt,
+    articleUrl,
+    onSummarize,
+    onGenerateTts,
+    summary,
+    summaryVisible,
+    summaryLoading,
+    ttsStatus = 'idle',
+    ttsAudioUrl = '',
+    ttsError = '',
+}) {
     const [copied, setCopied] = useState(false);
     const hasSummary = !!summary;
     const showSummary = hasSummary && summaryVisible;
+    const isGeneratingAudio = ttsStatus === 'queued' || ttsStatus === 'processing';
     const categoryClasses = TONE_CLASSNAMES[categoryTone] || TONE_CLASSNAMES.generic;
 
     const handleShare = async () => {
@@ -76,9 +95,21 @@ function NewsArticle({ category, categoryTone, source, timeAgo, title, descripti
                                 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.13em] text-slate-400 transition-all hover:text-black disabled:cursor-not-allowed disabled:opacity-70"
                             >
                                 <span className={`material-symbols-outlined text-lg ${summaryLoading ? 'animate-spin' : ''}`}>
-                                    {summaryLoading ? 'progress_activity' : showSummary ? 'expand_less' : 'volume_up'}
+                                    {summaryLoading ? 'progress_activity' : showSummary ? 'expand_less' : 'summarize'}
                                 </span>
-                                {summaryLoading ? 'Đang tóm tắt...' : showSummary ? 'Thu gọn tóm tắt' : hasSummary ? 'Xem lại tóm tắt' : 'Nghe tóm tắt'}
+                                {summaryLoading ? 'Đang tóm tắt...' : showSummary ? 'Thu gọn tóm tắt' : hasSummary ? 'Xem lại tóm tắt' : 'Tóm tắt bài viết'}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={onGenerateTts}
+                                disabled={!hasSummary || summaryLoading || isGeneratingAudio}
+                                className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.13em] text-slate-400 transition-all hover:text-black disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                                <span className={`material-symbols-outlined text-lg ${isGeneratingAudio ? 'animate-spin' : ''}`}>
+                                    {isGeneratingAudio ? 'progress_activity' : 'play_arrow'}
+                                </span>
+                                {isGeneratingAudio ? 'Đang tạo audio...' : ttsAudioUrl ? 'Tạo lại audio' : 'Nghe audio'}
                             </button>
                         </div>
 
@@ -115,6 +146,16 @@ function NewsArticle({ category, categoryTone, source, timeAgo, title, descripti
                                 <h4 className="text-xs font-black uppercase tracking-[0.14em] text-black">Tóm tắt nhanh</h4>
                             </div>
                             <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{summary}</p>
+
+                            {ttsError ? (
+                                <p className="mt-3 text-xs font-semibold text-red-600">{ttsError}</p>
+                            ) : null}
+
+                            {ttsAudioUrl ? (
+                                <div className="mt-4">
+                                    <audio controls className="w-full" src={ttsAudioUrl} preload="none" />
+                                </div>
+                            ) : null}
                         </div>
                     )}
                 </div>

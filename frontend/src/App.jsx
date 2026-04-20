@@ -10,6 +10,102 @@ import './App.css'
 const HISTORY_KEY = 'newsai-search-history'
 const DAILY_SNAPSHOT_KEY = 'newsai-daily-snapshot'
 const MAX_HISTORY_ITEMS = 6
+const SUMMARY_TTS_STORAGE_KEY = 'newsai-summary-tts-jobs'
+const ARTICLE_TTS_STORAGE_KEY = 'newsai-article-tts-jobs'
+const ACTIVE_TTS_STATUSES = new Set(['queued', 'processing'])
+
+const createIdleTtsState = () => ({
+  key: '',
+  status: 'idle',
+  audioUrl: '',
+  error: '',
+  createdAt: '',
+  updatedAt: '',
+})
+
+const normalizeTtsState = (value) => {
+  if (!value || typeof value !== 'object') return createIdleTtsState()
+
+  return {
+    key: typeof value.key === 'string' ? value.key : '',
+    status: typeof value.status === 'string' ? value.status : 'idle',
+    audioUrl: typeof value.audioUrl === 'string' ? value.audioUrl : '',
+    error: typeof value.error === 'string' ? value.error : '',
+    createdAt: typeof value.createdAt === 'string' ? value.createdAt : '',
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : '',
+  }
+}
+
+const normalizeTtsStateMap = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+
+  return Object.entries(value).reduce((accumulator, [key, state]) => {
+    if (!key || typeof key !== 'string') return accumulator
+    accumulator[key] = normalizeTtsState(state)
+    return accumulator
+  }, {})
+}
+
+const loadTtsStateMapFromStorage = (storageKey) => {
+  if (typeof window === 'undefined') return {}
+
+  try {
+    const raw = window.localStorage.getItem(storageKey)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return normalizeTtsStateMap(parsed)
+  } catch {
+    return {}
+  }
+}
+
+const saveTtsStateMapToStorage = (storageKey, value) => {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(value))
+  } catch {
+    // Ignore storage quota and browser privacy mode errors.
+  }
+}
+
+const getSummarySignature = (text = '') => text.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 280)
+
+const getArticleTtsSlot = (articleUrl, index) => {
+  if (typeof articleUrl === 'string' && articleUrl.trim() && articleUrl !== '#') {
+    return articleUrl
+  }
+  return `local-article-${index}`
+}
+
+const toTtsStateFromJob = (job, fallback = createIdleTtsState()) => {
+  return {
+    key: typeof job?.key === 'string' ? job.key : fallback.key,
+    status: typeof job?.status === 'string' ? job.status : fallback.status,
+    audioUrl: typeof job?.audioUrl === 'string' ? job.audioUrl : fallback.audioUrl,
+    error: typeof job?.error === 'string' ? job.error : '',
+    createdAt: typeof job?.createdAt === 'string' ? job.createdAt : fallback.createdAt,
+    updatedAt: typeof job?.updatedAt === 'string' ? job.updatedAt : fallback.updatedAt,
+  }
+}
+
+const isSameTtsState = (left, right) => {
+  if (!left && !right) return true
+  if (!left || !right) return false
+
+  return (
+    left.key === right.key &&
+    left.status === right.status &&
+    left.audioUrl === right.audioUrl &&
+    left.error === right.error &&
+    left.createdAt === right.createdAt &&
+    left.updatedAt === right.updatedAt
+  )
+}
+
+const getTtsErrorMessage = (error, fallbackMessage) => {
+  return error?.response?.data?.error || error?.response?.data?.details || error?.message || fallbackMessage
+}
 
 const getLocalDayKey = (date = new Date()) => {
   const year = date.getFullYear();
@@ -156,6 +252,8 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState([]);
   const [historyReady, setHistoryReady] = useState(false);
+  const [summaryTtsJobs, setSummaryTtsJobs] = useState(() => loadTtsStateMapFromStorage(SUMMARY_TTS_STORAGE_KEY));
+  const [articleTtsJobs, setArticleTtsJobs] = useState(() => loadTtsStateMapFromStorage(ARTICLE_TTS_STORAGE_KEY));
   const [isMobileSummaryOpen, setIsMobileSummaryOpen] = useState(false);
   const [useDailyHomeLayout, setUseDailyHomeLayout] = useState(true);
   const hasBootstrappedRef = useRef(false);
@@ -179,6 +277,109 @@ function App() {
       // Ignore storage quota and browser privacy mode errors.
     }
   }, [searchHistory, historyReady]);
+
+  useEffect(() => {
+    saveTtsStateMapToStorage(SUMMARY_TTS_STORAGE_KEY, summaryTtsJobs);
+  }, [summaryTtsJobs]);
+
+  useEffect(() => {
+    saveTtsStateMapToStorage(ARTICLE_TTS_STORAGE_KEY, articleTtsJobs);
+  }, [articleTtsJobs]);
+
+  useEffect(() => {
+    const pendingSummaryJobs = Object.entries(summaryTtsJobs).filter(
+      ([, state]) => state.key && ACTIVE_TTS_STATUSES.has(state.status)
+    );
+    const pendingArticleJobs = Object.entries(articleTtsJobs).filter(
+      ([, state]) => state.key && ACTIVE_TTS_STATUSES.has(state.status)
+    );
+
+    if (pendingSummaryJobs.length === 0 && pendingArticleJobs.length === 0) {
+      return;
+    }
+
+    let canceled = false;
+    let pollTimer = null;
+
+    const fetchJobState = async (state) => {
+      try {
+        const job = await apiService.getTtsJob(state.key);
+        return toTtsStateFromJob(job, state);
+      } catch (error) {
+        if (error?.response?.status === 404) {
+          return {
+            ...state,
+            status: 'failed',
+            error: 'Không tìm thấy tiến trình TTS trên server.',
+          };
+        }
+
+        return state;
+      }
+    };
+
+    const pollPendingJobs = async () => {
+      const [summaryUpdates, articleUpdates] = await Promise.all([
+        Promise.all(
+          pendingSummaryJobs.map(async ([slot, state]) => {
+            const nextState = await fetchJobState(state);
+            return [slot, nextState];
+          })
+        ),
+        Promise.all(
+          pendingArticleJobs.map(async ([slot, state]) => {
+            const nextState = await fetchJobState(state);
+            return [slot, nextState];
+          })
+        ),
+      ]);
+
+      if (canceled) return;
+
+      if (summaryUpdates.length > 0) {
+        setSummaryTtsJobs((previous) => {
+          let changed = false;
+          const next = { ...previous };
+
+          summaryUpdates.forEach(([slot, nextState]) => {
+            const currentState = previous[slot];
+            if (!currentState || isSameTtsState(currentState, nextState)) return;
+            next[slot] = normalizeTtsState(nextState);
+            changed = true;
+          });
+
+          return changed ? next : previous;
+        });
+      }
+
+      if (articleUpdates.length > 0) {
+        setArticleTtsJobs((previous) => {
+          let changed = false;
+          const next = { ...previous };
+
+          articleUpdates.forEach(([slot, nextState]) => {
+            const currentState = previous[slot];
+            if (!currentState || isSameTtsState(currentState, nextState)) return;
+            next[slot] = normalizeTtsState(nextState);
+            changed = true;
+          });
+
+          return changed ? next : previous;
+        });
+      }
+
+      pollTimer = window.setTimeout(pollPendingJobs, 2200);
+    };
+
+    pollPendingJobs();
+
+    return () => {
+      canceled = true;
+      if (pollTimer) {
+        window.clearTimeout(pollTimer);
+      }
+    };
+  }, [summaryTtsJobs, articleTtsJobs]);
 
   const mapBraveResultToArticle = (result) => {
     // Helper function to strip HTML tags
@@ -326,6 +527,7 @@ function App() {
 
     // If no summary yet, fetch it
     setArticleSummaryLoading(prev => ({ ...prev, [index]: true }));
+    const articleTtsSlot = getArticleTtsSlot(articleUrl, index);
     
     try {
       const data = await apiService.scrape(articleUrl);
@@ -338,6 +540,13 @@ function App() {
           visible: true
         }
       }));
+
+      setArticleTtsJobs((previous) => {
+        if (!previous[articleTtsSlot]) return previous;
+        const next = { ...previous };
+        delete next[articleTtsSlot];
+        return next;
+      });
     } catch (err) {
       console.error('Article summarize error:', err);
       setArticleSummaries(prev => ({
@@ -349,6 +558,114 @@ function App() {
       }));
     } finally {
       setArticleSummaryLoading(prev => ({ ...prev, [index]: false }));
+    }
+  };
+
+  const handleGenerateSummaryTts = async () => {
+    const summaryText = typeof summary === 'string' ? summary.trim() : '';
+    if (!summaryText) return;
+
+    const signature = getSummarySignature(summaryText);
+    if (!signature) return;
+
+    const currentState = summaryTtsJobs[signature] || createIdleTtsState();
+    if (ACTIVE_TTS_STATUSES.has(currentState.status)) return;
+
+    setSummaryTtsJobs((previous) => ({
+      ...previous,
+      [signature]: {
+        ...normalizeTtsState(previous[signature]),
+        status: 'queued',
+        audioUrl: '',
+        error: '',
+      },
+    }));
+
+    try {
+      const createdJob = await apiService.createTtsJob(summaryText, { language: 'vi' });
+
+      if (!createdJob?.key) {
+        throw new Error('Không nhận được key TTS từ server.');
+      }
+
+      setSummaryTtsJobs((previous) => ({
+        ...previous,
+        [signature]: {
+          ...normalizeTtsState(previous[signature]),
+          key: createdJob.key,
+          status: createdJob.status || 'queued',
+          createdAt: createdJob.createdAt || previous[signature]?.createdAt || '',
+          error: '',
+        },
+      }));
+    } catch (err) {
+      setSummaryTtsJobs((previous) => ({
+        ...previous,
+        [signature]: {
+          ...normalizeTtsState(previous[signature]),
+          status: 'failed',
+          error: getTtsErrorMessage(err, 'Không thể tạo audio cho bản tóm tắt.'),
+        },
+      }));
+    }
+  };
+
+  const handleGenerateArticleTts = async (articleUrl, index) => {
+    const summaryText = articleSummaries[index]?.content?.trim();
+    const slot = getArticleTtsSlot(articleUrl, index);
+
+    if (!summaryText || summaryText.startsWith('Không thể tóm tắt')) {
+      setArticleTtsJobs((previous) => ({
+        ...previous,
+        [slot]: {
+          ...normalizeTtsState(previous[slot]),
+          status: 'failed',
+          error: 'Hãy tạo bản tóm tắt hợp lệ trước khi chuyển thành giọng nói.',
+          audioUrl: '',
+        },
+      }));
+      return;
+    }
+
+    const currentState = articleTtsJobs[slot] || createIdleTtsState();
+    if (ACTIVE_TTS_STATUSES.has(currentState.status)) return;
+
+    setArticleTtsJobs((previous) => ({
+      ...previous,
+      [slot]: {
+        ...normalizeTtsState(previous[slot]),
+        status: 'queued',
+        audioUrl: '',
+        error: '',
+      },
+    }));
+
+    try {
+      const createdJob = await apiService.createTtsJob(summaryText, { language: 'vi' });
+
+      if (!createdJob?.key) {
+        throw new Error('Không nhận được key TTS từ server.');
+      }
+
+      setArticleTtsJobs((previous) => ({
+        ...previous,
+        [slot]: {
+          ...normalizeTtsState(previous[slot]),
+          key: createdJob.key,
+          status: createdJob.status || 'queued',
+          createdAt: createdJob.createdAt || previous[slot]?.createdAt || '',
+          error: '',
+        },
+      }));
+    } catch (err) {
+      setArticleTtsJobs((previous) => ({
+        ...previous,
+        [slot]: {
+          ...normalizeTtsState(previous[slot]),
+          status: 'failed',
+          error: getTtsErrorMessage(err, 'Không thể tạo audio cho bài viết này.'),
+        },
+      }));
     }
   };
 
@@ -661,6 +978,11 @@ function App() {
 
   handleSearchRef.current = handleSearch;
 
+  const summarySignature = getSummarySignature(summary || '');
+  const summaryTtsState = summarySignature
+    ? normalizeTtsState(summaryTtsJobs[summarySignature])
+    : createIdleTtsState();
+
   // Bootstrap cache on first render:
   // 1) Load manual search history for sidebar
   // 2) Load today's daily snapshot from dedicated storage
@@ -853,9 +1175,13 @@ function App() {
                         key={`${article.articleUrl}-${index}`}
                         {...article}
                         onSummarize={() => handleArticleSummarize(article.articleUrl, index)}
+                        onGenerateTts={() => handleGenerateArticleTts(article.articleUrl, index)}
                         summary={articleSummaries[index]?.content}
                         summaryVisible={articleSummaries[index]?.visible}
                         summaryLoading={articleSummaryLoading[index]}
+                        ttsStatus={articleTtsJobs[getArticleTtsSlot(article.articleUrl, index)]?.status || 'idle'}
+                        ttsAudioUrl={articleTtsJobs[getArticleTtsSlot(article.articleUrl, index)]?.audioUrl || ''}
+                        ttsError={articleTtsJobs[getArticleTtsSlot(article.articleUrl, index)]?.error || ''}
                       />
                     ))}
                   </div>
@@ -869,6 +1195,10 @@ function App() {
               summary={summary}
               totalArticles={totalArticles}
               loading={summaryLoading}
+              onGenerateTts={handleGenerateSummaryTts}
+              ttsStatus={summaryTtsState.status}
+              ttsAudioUrl={summaryTtsState.audioUrl}
+              ttsError={summaryTtsState.error}
               onResummarize={useDailyHomeLayout ? handleDailyResummary : undefined}
               resummarizeDisabled={loading || summaryLoading || articles.length === 0}
             />
@@ -922,6 +1252,10 @@ function App() {
               summary={summary}
               totalArticles={totalArticles}
               loading={summaryLoading}
+              onGenerateTts={handleGenerateSummaryTts}
+              ttsStatus={summaryTtsState.status}
+              ttsAudioUrl={summaryTtsState.audioUrl}
+              ttsError={summaryTtsState.error}
               onResummarize={useDailyHomeLayout ? handleDailyResummary : undefined}
               resummarizeDisabled={loading || summaryLoading || articles.length === 0}
             />

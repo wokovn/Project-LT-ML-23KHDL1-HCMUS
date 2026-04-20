@@ -70,6 +70,13 @@ web_modules/
 .env.*
 !.env.example
 
+# Python virtual environments
+.venv/
+.venv*/
+venv/
+env/
+ENV/
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
@@ -137,3 +144,18 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Local ML model artifacts (large files)
+models/*
+!models/.keep
+
+# Common model checkpoint formats
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.bin
+*.onnx
+*.h5
+*.pb
+*.tflite

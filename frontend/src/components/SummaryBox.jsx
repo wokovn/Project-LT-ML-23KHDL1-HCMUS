@@ -1,6 +1,16 @@
 import { useState } from 'react';
 
-function SummaryBox({ summary, totalArticles, loading, onResummarize, resummarizeDisabled = false }) {
+function SummaryBox({
+  summary,
+  totalArticles,
+  loading,
+  onResummarize,
+  resummarizeDisabled = false,
+  onGenerateTts,
+  ttsStatus = 'idle',
+  ttsAudioUrl = '',
+  ttsError = '',
+}) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -20,6 +30,7 @@ function SummaryBox({ summary, totalArticles, loading, onResummarize, resummariz
     .filter(Boolean);
 
   const hasSummary = renderedSummary?.length > 0;
+  const isGeneratingAudio = ttsStatus === 'queued' || ttsStatus === 'processing';
 
   return (
     <div className="summary-panel overflow-hidden border-2 border-black bg-white p-6 shadow-[10px_10px_0px_0px_rgba(0,0,0,0.04)] md:p-7">
@@ -84,10 +95,14 @@ function SummaryBox({ summary, totalArticles, loading, onResummarize, resummariz
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <button
               type="button"
-              className="flex items-center gap-3 bg-black px-8 py-4 text-xs font-black uppercase tracking-[0.15em] text-white transition-all hover:bg-slate-800"
+              onClick={onGenerateTts}
+              disabled={!hasSummary || isGeneratingAudio}
+              className="flex items-center gap-3 bg-black px-8 py-4 text-xs font-black uppercase tracking-[0.15em] text-white transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <span className="material-symbols-outlined text-lg">play_arrow</span>
-              Nghe bản tin
+              <span className={`material-symbols-outlined text-lg ${isGeneratingAudio ? 'animate-spin' : ''}`}>
+                {isGeneratingAudio ? 'progress_activity' : 'play_arrow'}
+              </span>
+              {isGeneratingAudio ? 'Đang tạo audio...' : ttsAudioUrl ? 'Tạo lại bản audio' : 'Nghe bản tin'}
             </button>
             <button
               type="button"
@@ -98,6 +113,16 @@ function SummaryBox({ summary, totalArticles, loading, onResummarize, resummariz
               {copied ? 'Đã sao chép' : 'Sao chép tóm tắt'}
             </button>
           </div>
+
+          {ttsError ? (
+            <p className="mt-4 text-xs font-semibold text-red-600">{ttsError}</p>
+          ) : null}
+
+          {ttsAudioUrl ? (
+            <div className="mt-4">
+              <audio controls className="w-full" src={ttsAudioUrl} preload="none" />
+            </div>
+          ) : null}
         </div>
       )}
     </div>
