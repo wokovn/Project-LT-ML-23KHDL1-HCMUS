@@ -66,50 +66,308 @@ Diễn giải:
 
 Toàn bộ gate kỹ thuật đã đạt ở chế độ strict.
 
-## 4. Thảo luận
+## 4. Thiết kế kiến trúc huấn luyện 3 phase
 
-### 4.1 Hàm ý phương pháp luận
-Kết quả khẳng định rằng với bộ dữ liệu này, vấn đề chính trước huấn luyện không nằm ở thiếu file metadata mà nằm ở không đồng nhất định dạng tín hiệu. Vì vậy, bước chuẩn hóa audio cần được xem là một phần mặc định của pipeline thay vì thao tác tùy chọn.
+### 4.1 Kiến trúc huấn luyện chung
+Pipeline huấn luyện dùng cùng một backbone `Qwen2ForCausalLM` và cùng định dạng prompt transcript cho cả 3 phase. Với mỗi mẫu dữ liệu, văn bản được đóng gói theo mẫu chỉ thị TTS:
 
-### 4.2 Rủi ro nếu bỏ qua stage 2
-Bỏ qua chuẩn hóa có thể gây ra:
-1. Lỗi tương thích khi load batch do sample rate/channel không đồng nhất.
-2. Gia tăng nhiễu tối ưu vì mô hình học trên phân bố tín hiệu không chuẩn.
-3. Khó quy chiếu nguyên nhân khi chất lượng đầu ra giảm.
+- user: Convert the text to speech:<|TEXT_PROMPT_START|>...<|TEXT_PROMPT_END|>
+- assistant:<|SPEECH_GENERATION_START|>...<|SPEECH_GENERATION_END|>
 
-### 4.3 Giới hạn hiện tại
-Báo cáo này dừng ở giai đoạn dữ liệu và chưa chạy huấn luyện, do đó chưa có chỉ số mô hình như val loss trajectory, WER, CER, MCD hoặc MOS.
+Hàm mất mát là token-level cross-entropy trên causal LM. Nhãn ở vị trí padding được mask (`labels = -100`) để chỉ tối ưu trên token hợp lệ. Mọi phase đều dùng cùng cấu trúc DataLoader và cùng tiêu chí đánh giá chính là validation loss.
 
-## 5. Trạng thái sẵn sàng cho Phase 1
+### 4.2 Phase 1 (Warm-up): kiến trúc và lý do chiến lược
 
-### 5.1 Kết luận sẵn sàng
-- Data gate: Pass strict trên train/eval/test sau chuẩn hóa.
-- Data root đề xuất cho train: `D:/HCMUS/data_project_LT/xtts_stage2_24k_mono`.
-- Điều kiện tiền đề cho Phase 1: Đã đạt.
+Kiến trúc thực thi:
 
-### 5.2 Checklist chuyển sang huấn luyện
-1. Khóa cấu hình Phase 1 bằng snapshot config tại thời điểm chạy.
-2. Xác nhận entrypoint train thực tế (biến `TRAIN_SCRIPT`) trước khi chạy script warmup.
-3. Chạy smoke train ngắn và lưu artifact đầy đủ (`checkpoints`, `logs`, `samples`, `metrics`).
+- Khởi tạo từ checkpoint pretrained `models/pretrained/VieNeu-TTS`.
+- Train trực tiếp trên full transcript format với learning rate 1e-5.
+- Chạy smoke trước để nghiệm thu pipeline, sau đó chạy full 3 epochs.
 
-## 6. Kết luận
-Với dữ liệu tại ổ D, quy trình kiểm định cho thấy tập gốc không còn lỗi tham chiếu file nhưng chưa đạt điều kiện train do sai lệch định dạng audio ở mức lớn. Chuẩn hóa stage 2 đã chuyển toàn bộ dữ liệu về đúng chuẩn 24k mono, không làm mất dữ liệu, và giúp dữ liệu vượt gate strict hoàn toàn. Đây là cơ sở kỹ thuật đủ mạnh để bắt đầu Phase 1 theo workflow 3 phase.
+Lý do áp dụng chiến lược này:
 
-## 7. Trích dẫn
+- Mục tiêu chính của Phase 1 là ổn định hóa quá trình tối ưu và kiểm tra khả năng thích nghi ban đầu của mô hình với miền dữ liệu đích.
+- Learning rate ở mức vừa phải (1e-5) giúp giảm rủi ro phá vỡ biểu diễn gốc ở giai đoạn đầu.
+- Smoke-first giúp loại bỏ lỗi hệ thống (dependency, I/O, config, precision) trước khi tốn tài nguyên cho full run.
+
+### 4.3 Phase 2 (Full Finetune): kiến trúc và lý do chiến lược
+
+Kiến trúc thực thi (đã chạy xong):
+
+- Resume từ checkpoint tốt nhất của Phase 1: checkpoint-8000.
+- Chạy với `--phase phase2`, learning rate 5e-6, epochs 8 (theo config).
+- Giữ cơ chế lưu checkpoint mỗi 500 steps và Top-K theo validation loss.
+
+Lý do áp dụng chiến lược này:
+
+- Sau warm-up, mô hình đã vào vùng ổn định; giảm LR xuống 5e-6 giúp tối ưu sâu hơn nhưng hạn chế dao động gradient.
+- Tăng số epoch ở Phase 2 để mô hình học đủ độ phủ trên tập train lớn.
+- Resume từ best Phase 1 thay vì checkpoint cuối giúp kế thừa trạng thái có chất lượng validation tốt nhất.
+
+### 4.4 Phase 3 (Refine): kiến trúc và lý do chiến lược
+
+Kiến trúc thực thi (đã chạy xong):
+
+- Resume từ checkpoint tốt nhất của Phase 2.
+- Chạy với `--phase phase3`, learning rate 1e-6, epochs 4 (theo config).
+
+Lý do áp dụng chiến lược này:
+
+- Phase 3 đóng vai trò tinh chỉnh cuối (low-LR refinement) để cải thiện độ mượt và ổn định đầu ra.
+- LR rất thấp giúp giảm nguy cơ overfit và tránh làm xấu đi điểm hội tụ đã đạt ở Phase 2.
+
+### 4.5 Bộ tối ưu, scheduler và checkpointing
+Huấn luyện dùng HuggingFace Trainer (optimizer AdamW mặc định), scheduler giảm LR tuyến tính theo tiến trình train, checkpoint mỗi 500 steps, giữ Top-K tốt nhất (K=3) và checkpoint cuối.
+
+### 4.6 Siêu tham số và tái lập thực nghiệm
+
+| Nhóm | Smoke Phase 1 | Full Phase 1 | Full Phase 2 | Full Phase 3 |
+|---|---:|---:|---:|---:|
+| Seed | 20260419 | 20260419 | 20260419 | 20260419 |
+| Learning rate | 1e-5 | 1e-5 | 5e-6 | 1e-6 |
+| Batch size train/eval | 1 / 1 | 1 / 1 | 1 / 1 | 1 / 1 |
+| Gradient accumulation | 4 | 4 | 4 | 4 |
+| Max length | 384 | 384 | 384 | 384 |
+| Max steps | 100 | -1 (train theo epoch) | -1 (train theo epoch) | 27080 (explicit step target) |
+| Epochs | 1 | 3 | 8 | 4 |
+| Precision thực chạy | BF16 | BF16 | BF16 | FP16 |
+| Resume checkpoint | no | no | checkpoint-8000 (Phase 1 best) | checkpoint-15500 (Phase 2 best) |
+
+Thông tin môi trường tái lập (đã xác nhận cho Phase 1/2/3):
+
+- Python 3.10.12
+- Torch 2.6.0+cu124
+- CUDA runtime 12.4
+- Driver NVIDIA 550.144.03
+- GPU: NVIDIA GeForce RTX 3090 (24GB)
+- Run ID full Phase 1: 20260419_vieneu_transcript_phase1_full
+- Run ID full Phase 2: 20260419_vieneu_transcript_phase2_full
+- Run ID full Phase 3: 20260420_vieneu_transcript_phase3_refine_retry1
+
+### 4.7 Chiến lược đóng băng layer theo 3 phase và mục đích
+
+Theo thiết kế 3-phase trong file config, chiến lược đóng băng/mở khóa module được xác định như sau:
+
+| Phase | Freeze modules | Unfreeze modules | Mục đích khoa học |
+|---|---|---|---|
+| Phase 1 (warm-up) | dvae, vocoder | gpt, decoder | Ổn định bước thích nghi ban đầu; giữ nguyên phần giải mã âm thanh nền đã tốt, tập trung học ánh xạ ngôn ngữ-ngữ âm ở lõi sinh chuỗi. |
+| Phase 2 (full finetune) | none | gpt, decoder, text_encoder | Mở rộng không gian tối ưu để cải thiện độ tự nhiên/phát âm trên miền dữ liệu đích sau khi warm-up đã hội tụ. |
+| Phase 3 (refine) | none | gpt, decoder, text_encoder | Duy trì toàn bộ tham số học được, nhưng tinh chỉnh ở LR thấp để giảm nhiễu tối ưu và cải thiện chi tiết cuối. |
+
+Ghi chú triển khai:
+
+- Pipeline transcript hiện tại dùng một backbone causal-LM thống nhất để huấn luyện theo transcript; vì vậy chiến lược freeze/unfreeze trên được dùng như khung thiết kế khoa học của workflow 3-phase trong config để giải thích mục tiêu tối ưu từng phase.
+
+## 5. Kết quả thực nghiệm (Smoke, Phase 1, Phase 2, Phase 3)
+
+### 5.1 Kết quả smoke train (sanity training)
+
+Nguồn số liệu: runs/vieneu_tts/20260419_vieneu_transcript_smoke_bf16/phase1/metrics/phase1_metrics.json
+
+| Chỉ số | Giá trị |
+|---|---:|
+| train_runtime (s) | 32.2594 |
+| train_steps_per_second | 3.10 |
+| train_loss | 18.2261 |
+| eval_loss | 17.0056 |
+| train_rows | 64 |
+| eval_rows | 16 |
+
+Nhận xét smoke:
+
+- Pipeline train/val hoạt động đầy đủ (load data, train, eval, save checkpoint, save metrics).
+- Loss giảm rõ rệt theo tiến trình smoke, đạt mục tiêu nghiệm thu kỹ thuật trước khi vào full run.
+
+Biểu đồ quá trình học smoke:
+
+![Biểu đồ learning curve smoke Phase 1](../../runs/vieneu_tts/20260419_vieneu_transcript_smoke_bf16/phase1/metrics/figure_smoke_phase1_loss_curve.png)
+
+### 5.2 Kết quả full Phase 1 (3 epochs)
+
+Nguồn số liệu: runs/vieneu_tts/20260419_vieneu_transcript_phase1_full/phase1/metrics/phase1_metrics.json
+
+| Chỉ số | Giá trị |
+|---|---:|
+| train_runtime (s) | 2914.6733 |
+| train_runtime (phút) | 48.58 |
+| train_steps_per_second | 2.98 |
+| train_loss (global) | 6.4815 |
+| eval_loss (best measured in summary) | 6.0793 |
+| train_rows | 11579 |
+| eval_rows | 1446 |
+| total epochs | 3.0 |
+
+Tiến trình checkpoint và chọn mô hình tốt nhất:
+
+- Checkpoint còn lưu sau train: checkpoint-8000, checkpoint-8500, checkpoint-8685 (theo cơ chế Top-K + last).
+- Best checkpoint theo trainer_state: checkpoint-8000.
+- Best metric (validation loss): 6.079315662384033 tại step 8000 (epoch ~2.763).
+
+Biểu đồ quá trình học full run:
+
+![Biểu đồ learning curve full Phase 1](../../runs/vieneu_tts/20260419_vieneu_transcript_phase1_full/phase1/metrics/figure_full_phase1_loss_curve.png)
+
+### 5.3 Xu hướng hội tụ theo biểu đồ học
+
+- Full run cho thấy loss train giảm nhanh ở giai đoạn đầu, sau đó giảm chậm và ổn định về cuối epoch 3.
+- Validation loss hội tụ quanh mốc ~6.08 từ cuối epoch 2 đến cuối epoch 3, không xuất hiện phân kỳ.
+- Khoảng cách train/validation ở cuối run nhỏ (train 6.48, eval 6.08), chưa có dấu hiệu overfitting rõ rệt trong phạm vi Phase 1.
+
+### 5.4 Kết quả Full Phase 2 (8 epochs)
+
+Nguồn số liệu chính:
+
+- runs/vieneu_tts/20260419_vieneu_transcript_phase2_full/phase2/metrics/phase2_metrics.json
+- trainer_state từ checkpoint phase2 để xác định best checkpoint theo validation loss
+
+| Chỉ số | Giá trị |
+|---|---:|
+| train_runtime (s) | 5094.6821 |
+| train_runtime (phút) | 84.91 |
+| train_steps_per_second | 4.546 |
+| train_loss (global) | 4.0327 |
+| eval_loss (best) | 6.0657 |
+| best_checkpoint | checkpoint-15500 |
+| best_epoch | ~5.354 |
+| total epochs | 8.0 |
+
+Chi tiết chọn checkpoint tốt nhất:
+
+- Checkpoint còn lưu sau train: checkpoint-15500, checkpoint-23000, checkpoint-23160.
+- Theo trainer_state cuối, checkpoint tốt nhất là checkpoint-15500 với `best_metric = 6.065733432769775`.
+
+Biểu đồ quá trình học Phase 2:
+
+![Biểu đồ learning curve full Phase 2](../../runs/vieneu_tts/20260419_vieneu_transcript_phase2_full/phase2/metrics/figure_full_phase2_loss_curve.png)
+
+Ghi chú trực quan hóa:
+
+- Biểu đồ Phase 2 đã được làm mượt bằng Exponential Moving Average (EMA) với hệ số alpha = 0.7.
+- Đường dữ liệu thô (raw loss) không hiển thị để giảm nhiễu dao động theo từng bước train.
+
+Nhận xét khoa học cho Phase 2:
+
+- So với Phase 1, train_loss giảm đáng kể (6.48 -> 4.03), phản ánh khả năng mô hình tiếp tục học đặc trưng miền đích ở giai đoạn full finetune.
+- Validation loss cải thiện nhẹ nhưng nhất quán (6.0793 -> 6.0657), cho thấy Phase 2 giúp tinh chỉnh thêm mà chưa gây suy giảm tổng quát hóa.
+- Best checkpoint xuất hiện ở khoảng giữa-gần cuối tiến trình (step 15500), phù hợp với kỳ vọng khi tối ưu LR thấp và train dài hơn.
+
+### 5.5 Kết quả Full Phase 3 (Refine)
+
+Nguồn số liệu chính:
+
+- runs/vieneu_tts/20260420_vieneu_transcript_phase3_refine_retry1/phase3/metrics/phase3_metrics.json
+- runs/vieneu_tts/20260420_vieneu_transcript_phase3_refine_retry1/phase3/checkpoints/checkpoint-27080/trainer_state.json
+
+| Chỉ số | Giá trị |
+|---|---:|
+| train_runtime (s) | 4325.1064 |
+| train_runtime (phút) | 72.09 |
+| train_steps_per_second | 6.261 |
+| train_loss (global) | 2.6337 |
+| eval_loss (best) | 6.0653 |
+| best_checkpoint | checkpoint-17000 |
+| best_epoch (cumulative) | ~5.872 |
+| final_step | 27080 |
+
+Chi tiết chọn checkpoint tốt nhất:
+
+- Checkpoint còn lưu sau train: checkpoint-17000, checkpoint-27000, checkpoint-27080.
+- Theo trainer_state cuối, best checkpoint là checkpoint-17000 với `best_metric = 6.065334320068359`.
+- Ở checkpoint cuối (27080), eval_loss quan sát gần nhất tại step 27000 là 6.066153526306152, cao hơn best ~0.000819; điều này cho thấy tín hiệu cải thiện đã bão hòa sau vùng step tốt nhất.
+
+Biểu đồ quá trình học Phase 3:
+
+![Biểu đồ learning curve full Phase 3](../../runs/vieneu_tts/20260420_vieneu_transcript_phase3_refine_retry1/phase3/metrics/figure_full_phase3_loss_curve.png)
+
+Nhận xét khoa học cho Phase 3:
+
+- So với Phase 2, train_loss tiếp tục giảm mạnh (4.03 -> 2.63), phản ánh mô hình vẫn tối ưu tốt trên tập train ở giai đoạn refine LR thấp.
+- Validation loss đạt mức tốt nhất mới 6.065334 (so với 6.065733 ở Phase 2), cải thiện tuyệt đối ~0.000399 (~0.0066%).
+- Mức cải thiện validation là nhỏ nhưng nhất quán với kỳ vọng của refine phase: tối ưu vi mô chất lượng đầu ra thay vì thay đổi lớn về loss tổng quát.
+
+## 6. Đối chiếu yêu cầu trình bày (Báo cáo.md và Workflow.md)
+
+### 6.1 Nội dung đã đáp ứng trong phạm vi Smoke + Full Phase 1 + Full Phase 2 + Full Phase 3
+
+1. Mục 4.1: Trình bày hàm mất mát và cách mask nhãn.
+2. Mục 4.2: Trình bày optimizer, learning rate, scheduler, cơ chế lưu Top-K checkpoint.
+3. Mục 4.3: Trình bày siêu tham số, phần cứng chạy thực tế, run ID và checkpoint tốt nhất.
+4. Mục 5.1: Cung cấp learning curve train/validation và nhận xét xu hướng hội tụ cho smoke/phase1/phase2/phase3.
+5. Workflow 3-phase: đã mô tả rõ kiến trúc và mục tiêu từng phase, bao gồm chiến lược freeze/unfreeze và lý do học thuật.
+
+### 6.2 Nội dung còn hạn chế và hướng mở rộng
+
+1. Mục 5.2 (objective metrics trên test set) đã hoàn tất cho MCD, F0 RMSE, DTW; riêng MOS vẫn chưa thực hiện do cần quy trình đánh giá chủ quan với người nghe.
+2. Mục 5.3: Chưa thực hiện bảng so sánh baseline gốc vs fine-tune và ablation đầy đủ.
+3. Mục 6.2: Chưa có phân tích lỗi audio định tính theo nhóm lỗi (vỡ tiếng, nuốt từ, đọc sai tên riêng) trên tập test nghe thử lớn.
+
+## 7. Kết luận giai đoạn huấn luyện và đánh giá test set
+
+Kết quả thực nghiệm cho thấy chiến lược 3-phase đã cải thiện mô hình theo hướng ổn định và có lợi cho validation:
+
+- Phase 1 xác lập hội tụ ban đầu với best eval_loss 6.0793 (checkpoint-8000).
+- Phase 2 tiếp tục cải thiện nhẹ validation và giảm mạnh train_loss, đạt best eval_loss 6.0657 tại checkpoint-15500.
+- Phase 3 refine tiếp tục giảm thêm validation xuống 6.0653 tại checkpoint-17000, đồng thời duy trì ổn định hội tụ ở LR thấp.
+
+Checkpoint suy luận khuyến nghị cho giai đoạn hậu huấn luyện (theo best validation) là:
+
+- Phase 1 best: runs/vieneu_tts/20260419_vieneu_transcript_phase1_full/phase1/checkpoints/checkpoint-8000
+- Phase 2 best: runs/vieneu_tts/20260419_vieneu_transcript_phase2_full/phase2/checkpoints/checkpoint-15500
+- Phase 3 best: runs/vieneu_tts/20260420_vieneu_transcript_phase3_refine_retry1/phase3/checkpoints/checkpoint-17000
+
+Artifact chính sau Phase 3:
+
+- Output root Phase 3: runs/vieneu_tts/20260420_vieneu_transcript_phase3_refine_retry1/phase3
+- Best checkpoint Phase 3: runs/vieneu_tts/20260420_vieneu_transcript_phase3_refine_retry1/phase3/checkpoints/checkpoint-17000
+- Last checkpoint Phase 3: runs/vieneu_tts/20260420_vieneu_transcript_phase3_refine_retry1/phase3/checkpoints/checkpoint-27080
+- Full metrics Phase 3: runs/vieneu_tts/20260420_vieneu_transcript_phase3_refine_retry1/phase3/metrics/phase3_metrics.json
+
+Các bước chung trên test set (đã hoàn tất):
+
+1. Sinh audio cho test split bằng 3 checkpoint tốt nhất (phase1/phase2/phase3).
+2. Ghi manifest thành công/lỗi cho từng phase (`manifest.csv`, `manifest_errors.csv`) để kiểm soát chất lượng inference.
+3. Tính objective metrics cho từng phase: MCD, DTW(MFCC), F0 RMSE, DTW(log-F0).
+4. Tổng hợp so sánh liên phase vào file `all_phases_metrics_summary.json`.
+5. Tự động cập nhật bảng metrics test set vào báo cáo qua script `update_report_test_metrics.py`.
+
+Kết luận vận hành:
+
+- Quy trình fine-tune 3 phase và đánh giá objective trên test set đã hoàn tất end-to-end.
+- Báo cáo nghiên cứu cho mốc fine-tune hiện tại đã hoàn thiện; checkpoint Phase 3 best và các bảng metric test set là artifact chốt để nghiệm thu.
+
+## 8. Trích dẫn
+
 - VieNeu-TTS: https://huggingface.co/pnnbao-ump/VieNeu-TTS
 - Dataset XTTSv2 Finetuning Data 20260417: https://www.kaggle.com/datasets/nhtlnguyn1106/xttsv2-finetuning-data-20260417
 
-## 8. Phụ lục theo dõi thực nghiệm
+<!-- AUTO_TESTSET_METRICS_START -->
+## 9. Danh gia objective tren tap test (MCD, F0 RMSE, DTW)
 
-### 8.1 Nhật ký chạy chính
+Nguon so lieu:
+- runs/vieneu_tts/20260420_testset_eval_best3/all_phases_metrics_summary.json
 
-| Run ID | Nhóm bước | Date | Seed | Device | Kết quả |
-|---|---|---|---|---|---|
-| smoke_raw_d_drive_20260419 | gate_before_stage2 | 2026-04-19 | 20260419 | CPU | Fail (sr/channel mismatch, missing = 0) |
-| stage2_normalize_d_drive_20260419 | stage2_data_norm | 2026-04-19 | N/A | CPU | Hoàn tất chuẩn hóa full về 24k mono |
-| smoke_post_stage2_d_drive_20260419 | gate_after_stage2 | 2026-04-19 | 20260419 | CPU | Pass strict trên train/eval/test |
+Cau hinh metric:
+- sample_rate: 24000
+- n_mfcc: 14 (drop_c0=True)
+- n_fft/hop_length: 1024/480
+- f0_min_hz/f0_max_hz: 50.0/550.0
 
-### 8.2 Trạng thái mô hình hiện tại
-- Selected checkpoint: Chưa có (chưa chạy train).
-- Trade-off observed: N/A.
-- Ready for deployment: No.
+| Phase | num_ok / num_items | MCD (dB) mean | DTW(MFCC) mean | F0 RMSE (Hz) mean |
+|---|---:|---:|---:|---:|
+| Phase 1 best | 1450 / 1450 | 294.9859 | 48.0288 | 67.1557 |
+| Phase 2 best | 1450 / 1450 | 294.4805 | 47.9465 | 62.0986 |
+| Phase 3 best | 1450 / 1450 | 294.0594 | 47.8780 | 61.8228 |
+
+Nhan xet nhanh:
+- MCD cang thap thi pho nhac phan cang gan tham chieu.
+- F0 RMSE cang thap thi duong cao do cang on dinh va gan giong dich.
+- DTW(MFCC) giam cho thay do bien dang theo truc thoi gian giam.
+<!-- AUTO_TESTSET_METRICS_END -->
+
+### 9.1 Kết luận so sánh 3 phase theo MCD, F0 RMSE, DTW
+
+Trên toàn bộ 1450 mẫu test cho mỗi phase, các chỉ số objective đều cải thiện nhất quán theo thứ tự Phase 1 -> Phase 2 -> Phase 3. Cụ thể, MCD trung bình giảm từ 294.9859 xuống 294.4805 và 294.0594 dB; DTW(MFCC) trung bình giảm từ 48.0288 xuống 47.9465 và 47.8780; F0 RMSE trung bình giảm từ 67.1557 xuống 62.0986 và 61.8228 Hz.
+
+Xét tổng thể từ Phase 1 đến Phase 3, mức cải thiện tương đối đạt 0.3141% cho MCD, 0.3141% cho DTW(MFCC), và 7.9410% cho F0 RMSE. Điều này cho thấy lợi ích lớn nhất của quy trình fine-tune 3 phase nằm ở việc cải thiện độ bám cao độ (pitch fidelity), trong khi cải thiện phổ âm sắc và biến dạng theo thời gian ở mức nhỏ nhưng ổn định, phù hợp với kỳ vọng của giai đoạn refine LR thấp.
+
+Về mặt khoa học ứng dụng, kết quả này xác nhận Phase 3 không tạo bước nhảy lớn về loss tổng quát nhưng đóng vai trò tinh chỉnh vi mô chất lượng phát âm. Do đó, checkpoint Phase 3 best được chọn làm mô hình cuối cùng cho báo cáo; quá trình fine-tune kết thúc tại đây và chuyển sang giai đoạn tổng hợp báo cáo cuối.

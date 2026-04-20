@@ -3,8 +3,10 @@
 # For full training environment, use requirements-train.txt with Python 3.10/3.11.
 
 # Core audio/data stack
-numpy>=1.24,<3
-pandas>=2.0,<3
+numpy==1.22.0; python_version <= "3.10"
+numpy>=1.24,<3; python_version > "3.10"
+pandas>=1.5,<2; python_version < "3.12"
+pandas>=2.0,<3; python_version >= "3.12"
 scipy>=1.10,<2
 librosa>=0.10,<1
 soundfile>=0.12,<1
