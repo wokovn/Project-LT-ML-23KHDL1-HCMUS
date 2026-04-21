@@ -21,6 +21,13 @@ def fmt(v, digits=4):
         return str(v)
 
 
+def first_non_none(*values):
+    for v in values:
+        if v is not None:
+            return v
+    return None
+
+
 def build_section(summary: dict, summary_path: Path) -> str:
     p1 = summary.get("phase1_best") or {}
     p2 = summary.get("phase2_best") or {}
@@ -28,7 +35,7 @@ def build_section(summary: dict, summary_path: Path) -> str:
 
     lines = []
     lines.append(START_MARKER)
-    lines.append("## 9. Danh gia objective tren tap test (MCD, F0 RMSE, DTW)")
+    lines.append("## 9. Danh gia objective tren tap test (MCD, DTW, FFE)")
     lines.append("")
     lines.append("Nguon so lieu:")
     lines.append(f"- {summary_path.as_posix()}")
@@ -40,27 +47,30 @@ def build_section(summary: dict, summary_path: Path) -> str:
     lines.append(f"- n_fft/hop_length: {sample_cfg.get('n_fft', 'N/A')}/{sample_cfg.get('hop_length', 'N/A')}")
     lines.append(f"- f0_min_hz/f0_max_hz: {sample_cfg.get('f0_min_hz', 'N/A')}/{sample_cfg.get('f0_max_hz', 'N/A')}")
     lines.append("")
-    lines.append("| Phase | num_ok / num_items | MCD (dB) mean | DTW(MFCC) mean | F0 RMSE (Hz) mean |")
+    lines.append("| Phase | num_ok / num_items | MCD mean | DTW(MFCC) mean | FFE mean |")
     lines.append("|---|---:|---:|---:|---:|")
     lines.append(
         "| Phase 1 best | "
         f"{p1.get('num_ok', 'N/A')} / {p1.get('num_items', 'N/A')} | "
-        f"{fmt(p1.get('mcd_db_mean'))} | {fmt(p1.get('dtw_mfcc_mean'))} | {fmt(p1.get('f0_rmse_hz_mean'))} |"
+        f"{fmt(first_non_none(p1.get('mcd_mean'), p1.get('mcd_db_mean')))} | "
+        f"{fmt(p1.get('dtw_mfcc_mean'))} | {fmt(p1.get('ffe_mean'))} |"
     )
     lines.append(
         "| Phase 2 best | "
         f"{p2.get('num_ok', 'N/A')} / {p2.get('num_items', 'N/A')} | "
-        f"{fmt(p2.get('mcd_db_mean'))} | {fmt(p2.get('dtw_mfcc_mean'))} | {fmt(p2.get('f0_rmse_hz_mean'))} |"
+        f"{fmt(first_non_none(p2.get('mcd_mean'), p2.get('mcd_db_mean')))} | "
+        f"{fmt(p2.get('dtw_mfcc_mean'))} | {fmt(p2.get('ffe_mean'))} |"
     )
     lines.append(
         "| Phase 3 best | "
         f"{p3.get('num_ok', 'N/A')} / {p3.get('num_items', 'N/A')} | "
-        f"{fmt(p3.get('mcd_db_mean'))} | {fmt(p3.get('dtw_mfcc_mean'))} | {fmt(p3.get('f0_rmse_hz_mean'))} |"
+        f"{fmt(first_non_none(p3.get('mcd_mean'), p3.get('mcd_db_mean')))} | "
+        f"{fmt(p3.get('dtw_mfcc_mean'))} | {fmt(p3.get('ffe_mean'))} |"
     )
     lines.append("")
     lines.append("Nhan xet nhanh:")
-    lines.append("- MCD cang thap thi pho nhac phan cang gan tham chieu.")
-    lines.append("- F0 RMSE cang thap thi duong cao do cang on dinh va gan giong dich.")
+    lines.append("- MCD cang thap thi dac trung cepstral cang gan tham chieu.")
+    lines.append("- FFE cang thap thi ty le loi khung F0/voicing cang nho.")
     lines.append("- DTW(MFCC) giam cho thay do bien dang theo truc thoi gian giam.")
     lines.append(END_MARKER)
     lines.append("")

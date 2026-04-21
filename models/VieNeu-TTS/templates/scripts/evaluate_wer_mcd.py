@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate MCD, DTW (MFCC), and F0 RMSE for TTS outputs.
+"""Evaluate MCD, DTW (MFCC), and FFE for TTS outputs.
 
 Usage examples:
 
@@ -288,6 +288,7 @@ def _extract_mfcc(y, sample_rate: int, n_mfcc: int, n_fft: int, hop_length: int,
 def _extract_f0_track(y, sample_rate: int, hop_length: int, f0_min_hz: float, f0_max_hz: float):
     import torch
     import torchaudio
+    import numpy as np
 
     frame_time = max(1.0 / sample_rate, hop_length / float(sample_rate))
     waveform = torch.from_numpy(y).unsqueeze(0)
@@ -299,7 +300,49 @@ def _extract_f0_track(y, sample_rate: int, hop_length: int, f0_min_hz: float, f0
             freq_low=float(f0_min_hz),
             freq_high=float(f0_max_hz),
         )
-    return f0.squeeze(0).cpu().numpy().astype("float32")
+    f0_track = f0.squeeze(0).cpu().numpy().astype("float32")
+    times = (np.arange(f0_track.shape[0], dtype="float32") * float(frame_time)).astype("float32")
+    return times, f0_track
+
+
+def _nearest_interp_with_zero_fill(source_t, source_f, target_t):
+    import numpy as np
+
+    if source_t.size == 0:
+        return np.zeros_like(target_t, dtype=np.float32)
+
+    out = np.zeros_like(target_t, dtype=np.float32)
+    valid = (target_t >= source_t[0]) & (target_t <= source_t[-1])
+    if not np.any(valid):
+        return out
+
+    target_valid = target_t[valid]
+    right_idx = np.searchsorted(source_t, target_valid, side="left")
+    right_idx = np.clip(right_idx, 0, source_t.size - 1)
+    left_idx = np.maximum(right_idx - 1, 0)
+
+    choose_left = np.abs(target_valid - source_t[left_idx]) <= np.abs(source_t[right_idx] - target_valid)
+    nearest_idx = right_idx.copy()
+    nearest_idx[choose_left] = left_idx[choose_left]
+
+    out[valid] = source_f[nearest_idx].astype(np.float32)
+    return out
+
+
+def _f0_frame_error(true_t, true_f, est_t, est_f, eps: float = 1e-8):
+    import numpy as np
+
+    if true_t.size == 0:
+        raise ValueError("empty reference F0 timeline")
+
+    est_interp = _nearest_interp_with_zero_fill(est_t, est_f, true_t)
+
+    voiced_frames = (est_interp != 0.0) & (true_f != 0.0)
+    pitch_error_frames = np.abs(est_interp / (true_f + float(eps)) - 1.0) > 0.2
+    gpe_frames = voiced_frames & pitch_error_frames
+    vde_frames = (est_interp != 0.0) != (true_f != 0.0)
+
+    return float((np.sum(gpe_frames) + np.sum(vde_frames)) / len(true_t))
 
 
 def _compute_metrics_for_pair(
@@ -326,38 +369,25 @@ def _compute_metrics_for_pair(
     mfcc_gen = _downsample_time_frames(mfcc_gen, max_frames_mfcc)
 
     _, dtw_mfcc = _dtw_path_and_mean_cost(mfcc_ref, mfcc_gen)
-    mcd_scale = (10.0 / np.log(10.0)) * np.sqrt(2.0)
-    mcd_db = float(mcd_scale * dtw_mfcc)
+    if mfcc_ref.shape[1] <= 0:
+        raise ValueError("invalid MFCC dimension for MCD")
+    # Repo-style MCD: DTW-normalized RMS distance on MFCC vectors.
+    mcd = float(dtw_mfcc / math.sqrt(float(mfcc_ref.shape[1])))
 
-    f0_ref = _extract_f0_track(y_ref, sample_rate, hop_length, f0_min_hz, f0_max_hz)
-    f0_gen = _extract_f0_track(y_gen, sample_rate, hop_length, f0_min_hz, f0_max_hz)
+    f0_ref_t, f0_ref = _extract_f0_track(y_ref, sample_rate, hop_length, f0_min_hz, f0_max_hz)
+    f0_gen_t, f0_gen = _extract_f0_track(y_gen, sample_rate, hop_length, f0_min_hz, f0_max_hz)
+
+    f0_ref_t = _downsample_time_frames(f0_ref_t, max_frames_f0)
     f0_ref = _downsample_time_frames(f0_ref, max_frames_f0)
+    f0_gen_t = _downsample_time_frames(f0_gen_t, max_frames_f0)
     f0_gen = _downsample_time_frames(f0_gen, max_frames_f0)
 
-    voiced_ref = f0_ref[f0_ref > 0.0]
-    voiced_gen = f0_gen[f0_gen > 0.0]
-    if voiced_ref.size == 0 or voiced_gen.size == 0:
-        raise ValueError("no voiced frames for F0 RMSE")
-
-    log_ref = np.log(voiced_ref)
-    log_gen = np.log(voiced_gen)
-    f0_path, dtw_f0_log = _dtw_path_and_mean_cost(log_ref, log_gen)
-
-    sq_err = []
-    for i, j in f0_path:
-        d = float(voiced_ref[i] - voiced_gen[j])
-        sq_err.append(d * d)
-    if not sq_err:
-        raise ValueError("empty aligned voiced pairs")
-
-    f0_rmse_hz = float(np.sqrt(np.mean(sq_err)))
+    ffe = _f0_frame_error(f0_ref_t, f0_ref, f0_gen_t, f0_gen)
 
     return {
-        "mcd_db": mcd_db,
+        "mcd": mcd,
         "dtw_mfcc": float(dtw_mfcc),
-        "f0_rmse_hz": f0_rmse_hz,
-        "dtw_f0_log": float(dtw_f0_log),
-        "voiced_pairs": len(f0_path),
+        "ffe": ffe,
     }
 
 
@@ -427,7 +457,7 @@ def _build_items_from_test_csv(args: argparse.Namespace) -> list[EvalItem]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Compute MCD, DTW and F0 RMSE for TTS outputs")
+    parser = argparse.ArgumentParser(description="Compute MCD, DTW and FFE for TTS outputs")
 
     input_group = parser.add_mutually_exclusive_group(required=True)
     input_group.add_argument("--manifest-csv", default=None)
@@ -500,16 +530,13 @@ def main() -> None:
     rows_out = []
     mcd_vals = []
     dtw_vals = []
-    f0_vals = []
-    dtw_f0_vals = []
+    ffe_vals = []
 
     for item in tqdm(items, desc="Evaluating", unit="utt"):
         errors = []
-        mcd_db = None
+        mcd = None
         dtw_mfcc = None
-        f0_rmse_hz = None
-        dtw_f0_log = None
-        voiced_pairs = None
+        ffe = None
 
         if not item.reference_wav.exists():
             errors.append(f"missing reference wav: {item.reference_wav}")
@@ -531,20 +558,17 @@ def main() -> None:
                     f0_min_hz=args.f0_min_hz,
                     f0_max_hz=args.f0_max_hz,
                 )
-                mcd_db = metrics["mcd_db"]
+                mcd = metrics["mcd"]
                 dtw_mfcc = metrics["dtw_mfcc"]
-                f0_rmse_hz = metrics["f0_rmse_hz"]
-                dtw_f0_log = metrics["dtw_f0_log"]
-                voiced_pairs = metrics["voiced_pairs"]
+                ffe = metrics["ffe"]
 
-                mcd_vals.append(mcd_db)
+                mcd_vals.append(mcd)
                 dtw_vals.append(dtw_mfcc)
-                f0_vals.append(f0_rmse_hz)
-                dtw_f0_vals.append(dtw_f0_log)
+                ffe_vals.append(ffe)
             except Exception as exc:
                 errors.append(f"metric_error: {exc}")
 
-        has_any_metric = any(v is not None for v in (mcd_db, dtw_mfcc, f0_rmse_hz))
+        has_any_metric = any(v is not None for v in (mcd, dtw_mfcc, ffe))
         status = "ok" if not errors else ("partial" if has_any_metric else "error")
 
         rows_out.append(
@@ -552,11 +576,9 @@ def main() -> None:
                 "utt_id": item.utt_id,
                 "reference_wav": item.reference_wav.as_posix(),
                 "generated_wav": item.generated_wav.as_posix(),
-                "mcd_db": mcd_db,
+                "mcd": mcd,
                 "dtw_mfcc": dtw_mfcc,
-                "f0_rmse_hz": f0_rmse_hz,
-                "dtw_f0_log": dtw_f0_log,
-                "voiced_pairs": voiced_pairs,
+                "ffe": ffe,
                 "status": status,
                 "error": " | ".join(errors),
             }
@@ -564,26 +586,26 @@ def main() -> None:
 
     mcd_agg = _agg(mcd_vals)
     dtw_agg = _agg(dtw_vals)
-    f0_agg = _agg(f0_vals)
-    dtw_f0_agg = _agg(dtw_f0_vals)
+    ffe_agg = _agg(ffe_vals)
 
     summary = {
         "num_items": len(items),
         "num_ok": sum(1 for r in rows_out if r["status"] == "ok"),
         "num_partial": sum(1 for r in rows_out if r["status"] == "partial"),
         "num_error": sum(1 for r in rows_out if r["status"] == "error"),
+        # Repo-style MCD aliases (mcd_* preferred; mcd_db_* kept for compatibility).
+        "mcd_mean": mcd_agg["mean"],
+        "mcd_std": mcd_agg["std"],
+        "mcd_median": mcd_agg["median"],
         "mcd_db_mean": mcd_agg["mean"],
         "mcd_db_std": mcd_agg["std"],
         "mcd_db_median": mcd_agg["median"],
         "dtw_mfcc_mean": dtw_agg["mean"],
         "dtw_mfcc_std": dtw_agg["std"],
         "dtw_mfcc_median": dtw_agg["median"],
-        "f0_rmse_hz_mean": f0_agg["mean"],
-        "f0_rmse_hz_std": f0_agg["std"],
-        "f0_rmse_hz_median": f0_agg["median"],
-        "dtw_f0_log_mean": dtw_f0_agg["mean"],
-        "dtw_f0_log_std": dtw_f0_agg["std"],
-        "dtw_f0_log_median": dtw_f0_agg["median"],
+        "ffe_mean": ffe_agg["mean"],
+        "ffe_std": ffe_agg["std"],
+        "ffe_median": ffe_agg["median"],
         "sample_rate": args.sample_rate,
         "n_mfcc": args.n_mfcc,
         "n_fft": args.n_fft,
@@ -605,11 +627,9 @@ def main() -> None:
         "utt_id",
         "reference_wav",
         "generated_wav",
-        "mcd_db",
+        "mcd",
         "dtw_mfcc",
-        "f0_rmse_hz",
-        "dtw_f0_log",
-        "voiced_pairs",
+        "ffe",
         "status",
         "error",
     ]
