@@ -44,7 +44,7 @@ A full-stack web application built with React, Express.js, and integrated with m
 ### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/wokovn/Project-LT-ML-23KHDL1-HCMUS.git
 cd Project-LT-ML-23KHDL1-HCMUS
 ```
 
