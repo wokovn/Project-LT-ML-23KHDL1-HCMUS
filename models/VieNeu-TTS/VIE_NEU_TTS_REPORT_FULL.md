@@ -371,3 +371,229 @@ Trên toàn bộ 1450 mẫu test cho mỗi phase, các chỉ số objective đ�
 Xét tổng thể từ Phase 1 đến Phase 3, mức cải thiện tương đối đạt 0.3141% cho MCD, 0.3141% cho DTW(MFCC), và 7.9410% cho F0 RMSE. Điều này cho thấy lợi ích lớn nhất của quy trình fine-tune 3 phase nằm ở việc cải thiện độ bám cao độ (pitch fidelity), trong khi cải thiện phổ âm sắc và biến dạng theo thời gian ở mức nhỏ nhưng ổn định, phù hợp với kỳ vọng của giai đoạn refine LR thấp.
 
 Về mặt khoa học ứng dụng, kết quả này xác nhận Phase 3 không tạo bước nhảy lớn về loss tổng quát nhưng đóng vai trò tinh chỉnh vi mô chất lượng phát âm. Do đó, checkpoint Phase 3 best được chọn làm mô hình cuối cùng cho báo cáo; quá trình fine-tune kết thúc tại đây và chuyển sang giai đoạn tổng hợp báo cáo cuối.
+
+
+# BAO CAO BO SUNG: KIEN TRUC - HUAN LUYEN - THUC NGHIEM VIE-NEU-TTS
+
+Tai lieu nay bo sung mot ban report rieng cho mo hinh VieNeu-TTS, tap trung vao 4 phan: kien truc, cau hinh huan luyen, ket qua thuc nghiem, va thao luan phan tich loi.
+
+## 1) Mo hinh & kien truc
+
+### 1.1 Ly do lua chon mo hinh trong bai toan
+
+- Bai toan TTS tieng Viet can chat luong phat am tu nhien va kha nang clone giong on dinh theo speaker.
+- VieNeu-TTS da co san pipeline `standard` cho voice cloning theo reference audio, phu hop muc tieu huan luyen/fine-tune nhanh tren du lieu noi bo.
+- Backbone dang su dung la `Qwen2ForCausalLM` (dinh dang checkpoint da fine-tune), de toi uu theo huong transcript-style instruction tuning.
+
+### 1.2 Kien truc chi tiet & luong xu ly
+
+Luong xu ly tong quat:
+
+1. Nhap van ban + audio tham chieu cua speaker.
+2. Tao prompt theo mau transcript TTS.
+3. Backbone `Qwen2ForCausalLM` sinh chuoi token/ma trung gian theo dieu kien text + speaker reference.
+4. Codec `neuphonic/distill-neucodec` giai ma thanh waveform 24 kHz, mono.
+5. Ghi file wav va tinh metric.
+
+### 1.3 Thanh phan chinh
+
+| Thanh phan | Vai tro |
+|---|---|
+| Tokenizer + Prompt formatter | Chuyen text sang chuoi token theo dinh dang huan luyen/inference |
+| Qwen2ForCausalLM backbone | Thanh phan sinh chuoi trung tam cua he thong |
+| Reference encoder (`encode_reference`) | Trich xuat thong tin giong noi tu audio tham chieu |
+| NeuCodec/Distill-NeuCodec decoder | Giai ma chuoi ma thanh song am thanh |
+| Post-processing WAV | Chuan hoa va luu dau ra 16-bit PCM |
+
+### 1.4 So luong tham so
+
+Thong ke truc tiep tu `model.safetensors` (phase1/phase2/phase3 deu cung architecture):
+
+| Checkpoint | Tong so tham so |
+|---|---:|
+| phase1_best | 552,914,304 |
+| phase2_best | 552,914,304 |
+| phase3_best | 552,914,304 |
+
+=> Khoang 552.9M tham so.
+
+### 1.5 Ham kich hoat
+
+Theo `config.json` cua checkpoint:
+
+- `hidden_act = silu` (ham kich hoat chinh trong khoi feed-forward).
+- Trong self-attention, trong so attention dung softmax theo chuan Transformer.
+
+Thong so backbone chinh:
+
+- Model type: `qwen2`
+- So layer: 24
+- Hidden size: 896
+- Intermediate size: 4864
+- So attention heads: 14
+- KV heads: 2
+- Vocab size: 217652
+
+## 2) Cau hinh huan luyen
+
+### 2.1 Ham mat mat (ghi ro cong thuc)
+
+Mo hinh dung causal language modeling objective voi token-level cross entropy va mask padding.
+
+Ky hieu:
+
+- $z_t \in \mathbb{R}^{|V|}$: logits tai vi tri token $t$
+- $y_t$: nhan token dung
+- $m_t \in \{0,1\}$: mask hop le (padding co nhan `-100` tuong ung $m_t=0$)
+
+Cong thuc:
+
+$$
+\mathcal{L}
+= - \frac{1}{\sum_t m_t}
+\sum_t m_t \log \frac{\exp(z_{t,y_t})}{\sum_{v \in V} \exp(z_{t,v})}
+$$
+
+Trong do chi cac token co $m_t=1$ moi dong gop vao loss.
+
+### 2.2 Thuat toan toi uu va toc do hoc
+
+He thong train bang HuggingFace Trainer:
+
+- Optimizer: AdamW (mac dinh Trainer)
+- LR scheduler: theo cau hinh workflow 3-phase la cosine; tuy nhien trong script hien tai khong set `lr_scheduler_type` tuong minh nen mac dinh Trainer la linear.
+
+Bang cau hinh huan luyen theo phase (run thuc te):
+
+| Phase | Learning rate | Epoch | Batch train/eval | Grad accum | Precision | Resume |
+|---|---:|---:|---:|---:|---|---|
+| Phase 1 (warmup) | 1e-5 | 3 | 1 / 1 | 4 | BF16 | no |
+| Phase 2 (full finetune) | 5e-6 | 8 | 1 / 1 | 4 | BF16 | checkpoint-8000 |
+| Phase 3 (refine) | 1e-6 | 4 | 1 / 1 | 4 | FP16 (runtime report) | checkpoint-15500 |
+
+### 2.3 Sieu tham so
+
+| Nhom | Gia tri |
+|---|---|
+| Seed | 20260419 |
+| Max length | 384 |
+| Eval/save every n steps | 500 |
+| Save top-k checkpoint | 3 |
+| GPU | RTX 3090 24GB |
+| Sample rate du lieu huan luyen | 24000 Hz |
+
+### 2.4 Chien luoc finetune
+
+Chien luoc 3-phase:
+
+1. Phase 1 (warmup): on dinh hoa hoi tu ban dau.
+2. Phase 2 (full finetune): mo rong toi uu toan bo de nang chat luong.
+3. Phase 3 (refine): LR rat thap de tinh chinh vi mo, giam dao dong.
+
+Chi tiet freeze/unfreeze theo workflow config:
+
+- Phase 1: freeze `dvae`, `vocoder`; unfreeze `gpt`, `decoder`.
+- Phase 2 va 3: unfreeze rong hon gom `gpt`, `decoder`, `text_encoder`.
+
+## 3) Ket qua thuc nghiem
+
+### 3.1 Bieu do qua trinh hoc
+
+Phase 1:
+
+![Full Phase 1 learning curve](../../runs/vieneu_tts/20260419_vieneu_transcript_phase1_full/phase1/metrics/figure_full_phase1_loss_curve.png)
+
+Phase 2:
+
+![Full Phase 2 learning curve](../../runs/vieneu_tts/20260419_vieneu_transcript_phase2_full/phase2/metrics/figure_full_phase2_loss_curve.png)
+
+Phase 3:
+
+![Full Phase 3 learning curve](../../runs/vieneu_tts/20260420_vieneu_transcript_phase3_refine_retry1/phase3/metrics/figure_full_phase3_loss_curve.png)
+
+### 3.2 Danh gia tren tap test (chia bang theo tung giong vung mien)
+
+Nguon du lieu danh gia:
+
+- `runs/vieneu_tts/20260421_testset_eval_mcd_dtw_ffe_full/*/metrics_summary_per_utt.csv`
+- `data/xtts_stage2_24k_mono/test_wav.csv` (cot `speaker_name`)
+
+Phan bo mau test theo speaker:
+
+- `@HUE`: 465 mau
+- `@QuangDien`: 427 mau
+- `@speaker`: 558 mau
+
+#### Phase 1 best
+
+| Speaker | So mau (ok/total) | MCD mean | DTW(MFCC) mean | FFE mean |
+|---|---:|---:|---:|---:|
+| @HUE | 465/465 | 15.9385 | 57.4670 | 0.6984 |
+| @QuangDien | 427/427 | 11.3143 | 40.7943 | 0.5562 |
+| @speaker | 558/558 | 12.3116 | 44.3901 | 0.5693 |
+| Tong 3 speaker | 1450/1450 | 13.1810 | 47.5248 | 0.6068 |
+
+#### Phase 2 best
+
+| Speaker | So mau (ok/total) | MCD mean | DTW(MFCC) mean | FFE mean |
+|---|---:|---:|---:|---:|
+| @HUE | 465/465 | 16.0744 | 57.9570 | 0.6992 |
+| @QuangDien | 427/427 | 11.2078 | 40.4102 | 0.5561 |
+| @speaker | 558/558 | 12.3849 | 44.6542 | 0.5663 |
+| Tong 3 speaker | 1450/1450 | 13.2214 | 47.6705 | 0.6059 |
+
+#### Phase 3 best
+
+| Speaker | So mau (ok/total) | MCD mean | DTW(MFCC) mean | FFE mean |
+|---|---:|---:|---:|---:|
+| @HUE | 465/465 | 15.9967 | 57.6769 | 0.7025 |
+| @QuangDien | 427/427 | 11.3062 | 40.7651 | 0.5474 |
+| @speaker | 558/558 | 12.3318 | 44.4631 | 0.5703 |
+| Tong 3 speaker | 1450/1450 | 13.2051 | 47.6116 | 0.6060 |
+
+Tong quan toan test set (1450/1450 moi phase):
+
+- Best MCD: phase1_best (13.1810)
+- Best DTW(MFCC): phase1_best (47.5248)
+- Best FFE: phase2_best (0.6059)
+
+## 4) Thao luan va phan tich loi
+
+### 4.1 Han che va phan tich loi
+
+- Khac biet giua cac phase tren metric objective la nho; khong co xu huong cai thien don dieu tren ca 3 metric.
+- Nhom `@HUE` co metric xau hon ro so voi hai nhom con lai (MCD/DTW/FFE deu cao), cho thay speaker/domain nay kho hon.
+- Hien chua co MOS/AB test nen danh gia "nghe tu nhien" van chua day du.
+
+### 4.2 Hien tuong overfitting/underfitting
+
+- Khong thay dau hieu underfitting ro sau phase2/phase3 vi train loss da giam manh.
+- Co dau hieu "diminishing returns": train loss tiep tuc giam nhung eval/objective metric chi thay doi rat nho.
+- Kha nang overfitting nhe co the xuat hien sau moc checkpoint best (eval loss khong con cai thien ro).
+
+### 4.3 Bien phap han che hien tuong
+
+1. Chon checkpoint theo metric hop nhat da muc tieu (khong chi train loss).
+2. Tang danh gia da metric (MCD + DTW + FFE + MOS nho).
+3. Can bang lai du lieu theo speaker vung mien (hoac weighted sampling).
+4. Them regularization va data augmentation audio muc vua phai.
+
+### 4.4 Truong hop sai va gia thuyet
+
+Truong hop metric cao o `@HUE` co the do:
+
+- Do lech phonetic/prosody vung mien so voi phan lon du lieu train.
+- Reference audio co do on/nang luong khac biet.
+- Phan bo cau van ban dai/ngan khong dong deu giua cac speaker.
+
+### 4.5 Huong khac phuc
+
+1. Tang mau train co nhan speaker tuong ung voi nhom kho (`@HUE`).
+2. Chay bo danh gia MOS/AB theo tung speaker de kiem chung chat luong cam nhan.
+3. Dung tieu chi chon mo hinh da muc tieu theo trong so:
+
+$$
+S = w_1 \cdot \text{MCD} + w_2 \cdot \text{DTW(MFCC)} + w_3 \cdot \text{FFE}
+$$
+
+4. Kiem tra lai pipeline prompt/reference cho cac nhom giong de giam sai lech dieu kien dau vao.
