@@ -38,7 +38,7 @@ MODEL_REPO_ID = os.getenv("VNTTS_MODEL_REPO_ID", "anhnh2002/vnTTS")
 MODEL_DIR = Path(
     os.getenv("VNTTS_MODEL_DIR", str(PROJECT_ROOT / "models" / "vntts-runtime-model"))
 )
-DEFAULT_SPEAKER = os.getenv("VNTTS_DEFAULT_SPEAKER", "vi_man.wav")
+DEFAULT_SPEAKER = os.getenv("VNTTS_DEFAULT_SPEAKER", "nu_nam.wav")
 DEVICE = os.getenv("VNTTS_DEVICE", "cuda:0" if torch.cuda.is_available() else "cpu")
 MAX_TASKS = int(os.getenv("VNTTS_MAX_TASKS", "100"))
 SAMPLE_RATE = int(os.getenv("VNTTS_SAMPLE_RATE", "24000"))
@@ -400,7 +400,7 @@ class VnTTSRuntime:
 
     def _ensure_model_files(self) -> None:
         required = [
-            self.model_dir / "model.pth",
+            self.model_dir / "best_model.pth",
             self.model_dir / "config.json",
             self.model_dir / "vocab.json",
             self.model_dir / DEFAULT_SPEAKER,
@@ -431,9 +431,10 @@ class VnTTSRuntime:
             model = Xtts.init_from_config(config)
             model.load_checkpoint(
                 config,
-                checkpoint_path=str(self.model_dir / "model.pth"),
+                checkpoint_path=str(self.model_dir / "best_model.pth"),
                 vocab_path=str(self.model_dir / "vocab.json"),
                 use_deepspeed=False,
+                strict=False,
             )
             model.to(self.device)
             model.eval()
@@ -493,6 +494,8 @@ class VnTTSRuntime:
                     language=request.language,
                     gpt_cond_latent=gpt_cond_latent,
                     speaker_embedding=speaker_embedding,
+                    temperature=0.1,
+                    speed=1.2,
                     length_penalty=1.0,
                     repetition_penalty=10.0,
                     top_k=10,
@@ -576,6 +579,7 @@ def synthesize(request: TtsRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        LOGGER.exception("Error during synthesis")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

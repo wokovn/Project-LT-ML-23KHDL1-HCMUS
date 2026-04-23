@@ -10,7 +10,7 @@ function FilterBar({ voice, onVoiceChange, time, onTimeChange, source, onSourceC
                     className="cursor-pointer border-0 bg-transparent py-0 pl-0 pr-6 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600 focus:ring-0"
                 >
                     <option value="Bắc">Nam (Bắc)</option>
-                    <option value="Nam">Nam (Nam)</option>
+                    <option value="Nam">Nữ (Nam)</option>
                     <option value="Trung">Nam (Trung)</option>
                 </select>
             </label>

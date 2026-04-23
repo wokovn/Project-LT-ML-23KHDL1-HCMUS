@@ -69,7 +69,7 @@ const saveTtsStateMapToStorage = (storageKey, value) => {
   }
 }
 
-const getSummarySignature = (text = '') => text.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 280)
+const getSummarySignature = (text = '', voice = '') => (text.trim() + voice).toLowerCase().replace(/\s+/g, ' ').slice(0, 280)
 
 const getArticleTtsSlot = (articleUrl, index) => {
   if (typeof articleUrl === 'string' && articleUrl.trim() && articleUrl !== '#') {
@@ -565,11 +565,17 @@ function App() {
     const summaryText = typeof summary === 'string' ? summary.trim() : '';
     if (!summaryText) return;
 
-    const signature = getSummarySignature(summaryText);
+    const signature = getSummarySignature(summaryText, voice);
     if (!signature) return;
 
     const currentState = summaryTtsJobs[signature] || createIdleTtsState();
     if (ACTIVE_TTS_STATUSES.has(currentState.status)) return;
+
+    const VOICE_MAP = {
+      'Bắc': 'nam_bac.wav',
+      'Nam': 'nu_nam.wav',
+      'Trung': 'nam_trung.wav'
+    };
 
     setSummaryTtsJobs((previous) => ({
       ...previous,
@@ -582,7 +588,11 @@ function App() {
     }));
 
     try {
-      const createdJob = await apiService.createTtsJob(summaryText, { language: 'vi' });
+      const speakerAudio = VOICE_MAP[voice] || 'nam_bac.wav';
+      const createdJob = await apiService.createTtsJob(summaryText, { 
+        language: 'vi',
+        speakerAudio
+      });
 
       if (!createdJob?.key) {
         throw new Error('Không nhận được key TTS từ server.');
@@ -630,18 +640,18 @@ function App() {
     const currentState = articleTtsJobs[slot] || createIdleTtsState();
     if (ACTIVE_TTS_STATUSES.has(currentState.status)) return;
 
-    setArticleTtsJobs((previous) => ({
-      ...previous,
-      [slot]: {
-        ...normalizeTtsState(previous[slot]),
-        status: 'queued',
-        audioUrl: '',
-        error: '',
-      },
-    }));
+    const VOICE_MAP = {
+      'Bắc': 'nam_bac.wav',
+      'Nam': 'nu_nam.wav',
+      'Trung': 'nam_trung.wav'
+    };
 
     try {
-      const createdJob = await apiService.createTtsJob(summaryText, { language: 'vi' });
+      const speakerAudio = VOICE_MAP[voice] || 'nam_bac.wav';
+      const createdJob = await apiService.createTtsJob(summaryText, { 
+        language: 'vi',
+        speakerAudio
+      });
 
       if (!createdJob?.key) {
         throw new Error('Không nhận được key TTS từ server.');
