@@ -1,0 +1,42 @@
+services:
+  # Backend Node.js Service (Docker)
+  - type: web
+    name: project-backend
+    env: docker # Chuyển sang Docker để hỗ trợ Puppeteer
+    plan: free
+    rootDir: backend
+    dockerFilePath: Dockerfile
+    dockerContext: .
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: BRAVE_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_TTS_BUCKET
+        value: tts_audio
+      - key: TTS_MP3_BITRATE
+        value: 64k
+      - key: FFMPEG_PATH
+        value: ffmpeg
+      - key: CORS_ORIGIN
+        value: "*" # Bạn có thể thay đổi thành URL của frontend sau khi deploy
+
+  # Frontend Static Site
+  - type: static_site
+    name: project-frontend
+    env: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    publishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://project-backend.onrender.com/api
