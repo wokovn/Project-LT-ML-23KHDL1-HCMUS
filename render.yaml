@@ -30,7 +30,7 @@ services:
         value: "*" # Bạn có thể thay đổi thành URL của frontend sau khi deploy
 
   # Frontend Static Site
-  - type: static_site
+  - type: static
     name: project-frontend
     env: static
     plan: free
