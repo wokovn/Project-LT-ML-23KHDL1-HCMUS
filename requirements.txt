@@ -1,21 +1,17 @@
-# Core Audio Processing
-numpy
-librosa
-soundfile
-
-# YouTube Download
+# Project-wide extras that are not covered by the sub-requirements files.
+# The main XTTS / backend dependency sets are reused below with -r includes.
 yt-dlp
-
-# ASR (Speech-to-Text)
+youtube-transcript-api
 faster-whisper
-torch
 ctranslate2
-
-# Text Normalization
-num2words
-
-# Progress Bar
-tqdm
-
-# FFmpeg (required by yt-dlp & librosa)
+pydantic
+underthesea
+vinorm
+pyworld
+pymcd
+absl-py
 ffmpeg-python
+
+# Reuse the maintained dependency sets for the TTS backend and XTTS stack.
+-r backend/tts_fastapi/requirements.txt
+-r models/XTTSv2-Finetuning-for-New-Languages/requirements.txt
