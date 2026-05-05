@@ -3,8 +3,18 @@ import scrapeService from '../services/scrape.service.js';
 import geminiService from '../services/gemini.service.js';
 import pLimit from 'p-limit';
 
-// Giới hạn concurrency - chỉ chạy 3 scrape cùng lúc (thay vì 10)
+// Max 5 URLs, max 3 concurrent scrapes (axios is fast; Puppeteer fallback is slow)
+const MAX_SCRAPE_URLS = 5;
 const scrapeLimit = pLimit(3);
+
+// Wrap a promise with a hard timeout
+const withTimeout = (promise, ms, label) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms)
+    ),
+  ]);
 
 class SearchController {
   async search(req, res) {
@@ -66,11 +76,11 @@ class SearchController {
       // 2. Lấy URLs từ kết quả (ưu tiên news, fallback về web)
       let urls = [];
       if (searchData.news?.results && searchData.news.results.length > 0) {
-        urls = searchData.news.results.slice(0, 5).map(r => r.url);
+        urls = searchData.news.results.slice(0, MAX_SCRAPE_URLS).map(r => r.url);
       } else if (searchData.web?.results && searchData.web.results.length > 0) {
         urls = searchData.web.results
           .filter(r => r.type === 'search_result')
-          .slice(0, 5)
+          .slice(0, MAX_SCRAPE_URLS)
           .map(r => r.url);
       }
 
@@ -155,33 +165,39 @@ class SearchController {
 
   async scrapeAndSummarize(req, res) {
     try {
-      const { urls, query } = req.body;
+      const { urls: rawUrls, query } = req.body;
       
-      if (!urls || !Array.isArray(urls) || urls.length === 0) {
+      if (!rawUrls || !Array.isArray(rawUrls) || rawUrls.length === 0) {
         return res.status(400).json({ error: 'URLs array is required' });
       }
 
-      // 1. Scrape tất cả URLs bằng Puppeteer (GIỚI HẠN 3 LUỔNG)
-      console.log(`[PUPPETEER] Scraping ${urls.length} articles (concurrency: 3)...`);
-      const scrapePromises = urls.map((url, index) => 
-        scrapeLimit(async () => {
-          try {
-            const scraped = await scrapeService.scrapeUrl(url);
-            console.log(`[PUPPETEER] Successfully scraped: ${url}`);
-            return {
-              title: scraped.title || `Bai ${index + 1}`,
-              source: new URL(url).hostname,
-              content: scraped.text || '',
-              url: url
-            };
-          } catch (err) {
-            console.error(`[PUPPETEER] Failed to scrape ${url}:`, err.message);
-            return null;
-          }
-        })
+      // Cap to MAX_SCRAPE_URLS to avoid long waits
+      const urls = rawUrls.slice(0, MAX_SCRAPE_URLS);
+
+      // 1. Scrape URLs (axios fast path, Puppeteer fallback) with 30s total timeout
+      console.log(`[SCRAPE] Scraping ${urls.length} articles (max ${MAX_SCRAPE_URLS}, concurrency: 3)...`);
+      const scrapeWork = Promise.all(
+        urls.map((url, index) =>
+          scrapeLimit(async () => {
+            try {
+              const scraped = await scrapeService.scrapeUrl(url);
+              console.log(`[SCRAPE] OK: ${url.substring(0, 60)}`);
+              return {
+                title: scraped.title || `Bài ${index + 1}`,
+                source: new URL(url).hostname,
+                content: scraped.text || '',
+                url,
+              };
+            } catch (err) {
+              console.error(`[SCRAPE] Failed: ${url.substring(0, 60)} — ${err.message}`);
+              return null;
+            }
+          })
+        )
       );
 
-      const articles = (await Promise.all(scrapePromises)).filter(a => a !== null);
+      const rawArticles = await withTimeout(scrapeWork, 30000, 'scrapeAndSummarize');
+      const articles = rawArticles.filter((a) => a !== null);
       console.log(`[PUPPETEER] Successfully scraped ${articles.length}/${urls.length} articles`);
 
       if (articles.length === 0) {
