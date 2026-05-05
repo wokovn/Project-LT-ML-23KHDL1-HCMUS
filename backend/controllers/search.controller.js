@@ -164,6 +164,7 @@ class SearchController {
   }
 
   async scrapeAndSummarize(req, res) {
+    const tTotal = Date.now();
     try {
       const { urls: rawUrls, query } = req.body;
       
@@ -173,15 +174,20 @@ class SearchController {
 
       // Cap to MAX_SCRAPE_URLS to avoid long waits
       const urls = rawUrls.slice(0, MAX_SCRAPE_URLS);
+      console.log(`\n${'='.repeat(60)}`);
+      console.log(`[REQUEST] scrapeAndSummarize — ${urls.length} URLs, query="${query?.substring(0,40)}"`);
+      urls.forEach((u, i) => console.log(`  [${i+1}] ${u.substring(0, 80)}`));
 
       // 1. Scrape URLs (axios fast path, Puppeteer fallback) with 30s total timeout
-      console.log(`[SCRAPE] Scraping ${urls.length} articles (max ${MAX_SCRAPE_URLS}, concurrency: 3)...`);
+      const tScrapeStart = Date.now();
+      console.log(`[SCRAPE] ⏳ Starting scrape of ${urls.length} URLs (concurrency: 3)...`);
       const scrapeWork = Promise.all(
         urls.map((url, index) =>
           scrapeLimit(async () => {
+            const t = Date.now();
             try {
               const scraped = await scrapeService.scrapeUrl(url);
-              console.log(`[SCRAPE] OK: ${url.substring(0, 60)}`);
+              console.log(`[SCRAPE] ✅ [${index+1}/${urls.length}] ${Date.now()-t}ms — ${url.substring(0, 60)}`);
               return {
                 title: scraped.title || `Bài ${index + 1}`,
                 source: new URL(url).hostname,
@@ -189,7 +195,7 @@ class SearchController {
                 url,
               };
             } catch (err) {
-              console.error(`[SCRAPE] Failed: ${url.substring(0, 60)} — ${err.message}`);
+              console.error(`[SCRAPE] ❌ [${index+1}/${urls.length}] ${Date.now()-t}ms — ${url.substring(0, 60)}: ${err.message}`);
               return null;
             }
           })
@@ -198,18 +204,19 @@ class SearchController {
 
       const rawArticles = await withTimeout(scrapeWork, 30000, 'scrapeAndSummarize');
       const articles = rawArticles.filter((a) => a !== null);
-      console.log(`[PUPPETEER] Successfully scraped ${articles.length}/${urls.length} articles`);
+      console.log(`[SCRAPE] 🏁 Done: ${articles.length}/${urls.length} OK in ${Date.now()-tScrapeStart}ms (total elapsed: ${Date.now()-tTotal}ms)`);
 
       if (articles.length === 0) {
         return res.status(500).json({ error: 'Khong the scrape duoc bai bao nao' });
       }
 
-      // 2. Gửi tất cả vào Gemini để tóm tắt
-      console.log(`[GEMINI API] Starting summarization of ${articles.length} articles...`);
+      // 2. Send to Gemini
+      const tGeminiStart = Date.now();
+      console.log(`[GEMINI] ⏳ Summarizing ${articles.length} articles...`);
       let summary;
       try {
         summary = await geminiService.summarizeMultipleNews(articles, query || '');
-        console.log('[GEMINI API] Summarization successful');
+        console.log(`[GEMINI] ✅ Done in ${Date.now()-tGeminiStart}ms (total elapsed: ${Date.now()-tTotal}ms)`);
       } catch (err) {
         console.error('[GEMINI API] ERROR:', err.message);
         console.error('[GEMINI API] Status:', err.response?.status);
@@ -233,7 +240,8 @@ class SearchController {
         throw err;
       }
 
-      console.log('[SUCCESS] Scrape and summarize completed successfully');
+      console.log(`[SUCCESS] 🏁 scrapeAndSummarize done in ${Date.now()-tTotal}ms total`);
+      console.log('='.repeat(60));
       res.json({
         summary: summary.summary,
         totalArticles: summary.totalArticles

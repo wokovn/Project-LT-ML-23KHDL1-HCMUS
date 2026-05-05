@@ -42,12 +42,17 @@ const ARTICLE_SELECTORS = [
 
 // ─── Fast scrape via axios + cheerio ──────────────────────────────────────────
 async function scrapeWithAxios(url) {
+  const t0 = Date.now();
+  const shortUrl = url.substring(0, 60);
+  console.log(`[AXIOS] ⏳ Fetching: ${shortUrl}`);
+
   const response = await axios.get(url, {
     headers: { ...BROWSER_HEADERS, Referer: new URL(url).origin },
     timeout: 8000,        // 8s hard limit
     maxRedirects: 5,
     responseType: 'arraybuffer', // handle encoding correctly
   });
+  console.log(`[AXIOS] ✅ Got HTTP ${response.status} in ${Date.now() - t0}ms — ${shortUrl}`);
 
   // Detect charset from Content-Type header
   const contentType = response.headers['content-type'] || '';
@@ -61,6 +66,7 @@ async function scrapeWithAxios(url) {
     html = new TextDecoder('utf-8').decode(response.data);
   }
 
+  const t1 = Date.now();
   const $ = cheerio.load(html);
 
   // Remove noise elements
@@ -87,7 +93,7 @@ async function scrapeWithAxios(url) {
     foundSelector = 'body';
   }
 
-  console.log(`[AXIOS] Scraped "${foundSelector}" from ${url.substring(0, 60)} — ${text.length} chars`);
+  console.log(`[AXIOS] 📄 selector="${foundSelector}" chars=${text.length} parse=${Date.now()-t1}ms total=${Date.now()-t0}ms — ${shortUrl}`);
 
   return {
     title,
@@ -102,10 +108,12 @@ async function scrapeWithAxios(url) {
 async function scrapeWithPuppeteer(url) {
   let browser = null;
   let tempDir = null;
+  const t0 = Date.now();
+  const shortUrl = url.substring(0, 60);
 
   try {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'puppeteer-'));
-    console.log(`[PUPPETEER] Fallback for: ${url.substring(0, 60)}`);
+    console.log(`[PUPPETEER] 🚀 Launching browser for: ${shortUrl}`);
 
     browser = await puppeteer.launch({
       headless: puppeteerConfig.HEADLESS,
@@ -143,7 +151,10 @@ async function scrapeWithPuppeteer(url) {
       window.chrome = { runtime: {} };
     });
 
+    const tNav = Date.now();
+    console.log(`[PUPPETEER] ⏳ Navigating (browser launch took ${tNav - t0}ms)...`);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    console.log(`[PUPPETEER] ✅ DOM loaded in ${Date.now() - tNav}ms — ${shortUrl}`);
     await new Promise((r) => setTimeout(r, 800));
 
     const data = await page.evaluate((selectors) => {
@@ -182,7 +193,7 @@ async function scrapeWithPuppeteer(url) {
       };
     }, ARTICLE_SELECTORS);
 
-    console.log(`[PUPPETEER] OK — selector: ${data.selector}, ${data.textLength} chars`);
+    console.log(`[PUPPETEER] 📄 selector="${data.selector}" chars=${data.textLength} total=${Date.now()-t0}ms — ${shortUrl}`);
     return data;
   } finally {
     if (browser) {
