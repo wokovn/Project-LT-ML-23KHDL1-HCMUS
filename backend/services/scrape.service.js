@@ -227,27 +227,14 @@ class ScrapeService {
         return data;
       }
 
-      // axios returned thin content
-      if (IS_PRODUCTION) {
-        console.warn(`[SCRAPE] axios thin content (${data.textLength} chars) — returning as-is (Puppeteer disabled in production)`);
-        return data; // return what we have; don't risk OOM
-      }
-
+      // axios returned thin content - always fallback to Puppeteer
       console.warn(`[SCRAPE] axios thin content (${data.textLength} chars) — falling back to Puppeteer`);
     } catch (err) {
       const status = err.response?.status;
       const msg = `${status || err.message}`;
-
-      if (IS_PRODUCTION) {
-        console.warn(`[SCRAPE] axios failed (${msg}) — skipping Puppeteer in production, returning empty`);
-        // Return empty stub so the slot is skipped downstream
-        throw err;
-      }
-
       console.warn(`[SCRAPE] axios failed (${msg}) — falling back to Puppeteer`);
     }
 
-    // Development fallback only
     return scrapeWithPuppeteer(url);
   }
 }

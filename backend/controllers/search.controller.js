@@ -202,7 +202,7 @@ class SearchController {
         )
       );
 
-      const rawArticles = await withTimeout(scrapeWork, 30000, 'scrapeAndSummarize');
+      const rawArticles = await withTimeout(scrapeWork, 90000, 'scrapeAndSummarize');
       const articles = rawArticles.filter((a) => a !== null);
       console.log(`[SCRAPE] 🏁 Done: ${articles.length}/${urls.length} OK in ${Date.now()-tScrapeStart}ms (total elapsed: ${Date.now()-tTotal}ms)`);
 
