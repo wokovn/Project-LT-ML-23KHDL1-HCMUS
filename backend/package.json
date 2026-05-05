@@ -21,10 +21,10 @@
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
     "ffmpeg-static": "^5.2.0",
-    "p-limit": "^7.3.0",
-    "puppeteer": "^24.37.2"
+    "p-limit": "^7.3.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.1.11",
+    "puppeteer": "^24.37.2"
   }
 }

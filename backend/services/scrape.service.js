@@ -210,30 +210,47 @@ async function scrapeWithPuppeteer(url) {
   }
 }
 
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 class ScrapeService {
   /**
-   * Try axios first (fast). If it fails or returns too little content,
-   * fall back to Puppeteer.
+   * Production: axios+cheerio only (Puppeteer uses 150-300MB RAM per instance
+   * which OOM-kills the process on Render's 512MB free tier).
+   * Development: axios first, Puppeteer fallback if content is thin/blocked.
    */
   async scrapeUrl(url) {
     try {
       const data = await scrapeWithAxios(url);
 
-      // If we got decent content, use it
       if (data.textLength >= 300) {
         return data;
       }
 
-      console.warn(`[SCRAPE] axios got thin content (${data.textLength} chars), falling back to Puppeteer`);
+      // axios returned thin content
+      if (IS_PRODUCTION) {
+        console.warn(`[SCRAPE] axios thin content (${data.textLength} chars) — returning as-is (Puppeteer disabled in production)`);
+        return data; // return what we have; don't risk OOM
+      }
+
+      console.warn(`[SCRAPE] axios thin content (${data.textLength} chars) — falling back to Puppeteer`);
     } catch (err) {
       const status = err.response?.status;
-      console.warn(`[SCRAPE] axios failed for ${url.substring(0, 60)}: ${status || err.message} — falling back to Puppeteer`);
+      const msg = `${status || err.message}`;
+
+      if (IS_PRODUCTION) {
+        console.warn(`[SCRAPE] axios failed (${msg}) — skipping Puppeteer in production, returning empty`);
+        // Return empty stub so the slot is skipped downstream
+        throw err;
+      }
+
+      console.warn(`[SCRAPE] axios failed (${msg}) — falling back to Puppeteer`);
     }
 
-    // Fallback
+    // Development fallback only
     return scrapeWithPuppeteer(url);
   }
 }
 
 export default new ScrapeService();
+
