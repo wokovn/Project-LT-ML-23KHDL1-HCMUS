@@ -145,17 +145,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# Local ML model artifacts (large files)
-models/*
-!models/.keep
+# Local ML model artifacts (large files
 
-# Common model checkpoint formats
-*.pth
-*.pt
-*.ckpt
-*.safetensors
-*.bin
-*.onnx
-*.h5
-*.pb
-*.tflite
+data/raw_audio
+data/data_prepared/wavs
