@@ -146,6 +146,18 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
+# Python local envs and caches
+.venv/
+.venv_phase1/
+__pycache__/
+*.pyc
+
+# Local heavy artifacts (do not commit by default)
+data/xtts_raw_unprocessed/
+data/xtts_stage2_24k_mono/
+models/pretrained/
+runs/vieneu_tts/
+
 # Local ML model artifacts (large files
 
 data/raw_audio
