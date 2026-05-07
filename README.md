@@ -1,12 +1,4 @@
----
-title: News Summarizer & TTS System
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-pinned: false
----
-
-# News Summarizer & Vietnamese TTS System
+# News Summarizer & Vietnamese Regional TTS System
 
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
 ![Node.js](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)
@@ -16,230 +8,274 @@ pinned: false
 ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
 
-Một hệ thống phần mềm toàn diện (Full-stack Application) tích hợp AI, được thiết kế để tự động hóa trích xuất thông tin, tóm tắt nội dung bằng mô hình Ngôn ngữ Lớn (LLMs), và tổng hợp giọng nói Tiếng Việt (Text-to-Speech) đa vùng miền dựa trên cấu trúc học sâu (Deep Learning).
+Đây là đồ án kết hợp nghiên cứu và ứng dụng với trọng tâm là **xây dựng hệ thống chuyển đổi văn bản sang giọng nói hỗ trợ ngữ điệu vùng miền Việt Nam**, đồng thời tích hợp thêm pipeline **tìm kiếm, cào dữ liệu và tóm tắt tin tức bằng AI** để người dùng có thể đọc nhanh hoặc nghe lại nội dung theo giọng Bắc, Trung, Nam.
 
-Dự án được xây dựng với mục tiêu cung cấp giải pháp tiếp cận thông tin "hands-free", tối ưu thời gian đọc tin tức và hỗ trợ tính năng khả dụng (accessibility) cho người dùng khiếm thị hoặc suy giảm thị lực.
+Hệ thống gồm 3 lớp chính:
 
----
+- **Frontend React/Vite**: giao diện tìm kiếm, lọc, xem bài viết, xem tóm tắt và phát audio.
+- **Backend Node.js/Express**: điều phối search, scrape, Gemini, TTS, transcode và lưu trữ Supabase.
+- **TTS Engine FastAPI**: dịch vụ sinh giọng tiếng Việt chạy riêng để tránh nghẽn khi inference.
 
-## Mục Lục
-- [Tổng Quan Kiến Trúc (Architecture Overview)](#tổng-quan-kiến-trúc-architecture-overview)
-- [Tính Năng Cốt Lõi (Core Features)](#tính-năng-cốt-lõi-core-features)
-- [Thiết Kế Hệ Thống & Quyết Định Kỹ Thuật (Engineering & Architecture Decisions)](#thiết-kế-hệ-thống--quyết-định-kỹ-thuật-engineering--architecture-decisions)
-- [Cấu Trúc Thư Mục (Repository Structure)](#cấu-trúc-thư-mục-repository-structure)
-- [Hướng Dẫn Triển Khai (Deployment & Setup)](#hướng-dẫn-triển-khai-deployment--setup)
-- [Tài Liệu API (API Reference)](#tài-liệu-api-api-reference)
+## Mục Tiêu
 
----
+- Tạo một ứng dụng web giúp người dùng tìm tin tức, gom nhiều nguồn, tóm tắt nội dung chính và nghe bản tin bằng giọng Việt tự nhiên.
+- Hỗ trợ nhu cầu đọc tin nhanh, hands-free, và tăng khả năng tiếp cận cho người dùng cần audio output.
+- Phục vụ phần nghiên cứu TTS của đồ án: so sánh và tinh chỉnh các hướng tiếp cận như VITS, XTTSv2 và VieNeu-TTS, sau đó triển khai runtime bằng vnTTS/XTTS stack.
 
-## Tổng Quan Kiến Trúc (Architecture Overview)
+## Tính Năng Chính
 
-Hệ thống được thiết kế theo mô hình Microservices, phân tách rõ ràng giữa HTTP API phản hồi nhanh và Dịch vụ Inference tính toán nặng (GPU-bound).
+- Tìm kiếm tin tức bằng **Brave Search API**.
+- Cào nội dung bài viết bằng **axios + cheerio** và fallback **Puppeteer**.
+- Tóm tắt nội dung bằng **Google Gemini**.
+- Sinh audio TTS tiếng Việt qua **FastAPI + vnTTS/XTTSv2**.
+- Hỗ trợ job-based TTS và polling để tránh timeout khi sinh audio dài.
+- Transcode WAV sang MP3 bằng **ffmpeg** trước khi lưu lên **Supabase Storage**.
+- Giao diện có lịch sử tìm kiếm, bộ lọc, trang chủ tin tức, xem lại summary và phát audio.
+
+## Kiến Trúc Hệ Thống
 
 ```mermaid
 flowchart TB
-    subgraph Client Layer
-        UI["React Web Application<br/>(SPA, Vite)"]
-    end
+    U[Người dùng] --> UI[Frontend React/Vite]
+    UI --> API[Backend Node.js / Express]
 
-    subgraph Service Mesh
-        NodeAPI["API Orchestrator<br/>(Node.js, Express)<br/>Routing, Xử lý tác vụ, I/O Operations"]
-        TTS_API["TTS Inference Engine<br/>(Python, FastAPI)<br/>PyTorch, XTTSv2, vnTTS"]
-    end
-
-    subgraph External Dependencies
-        LLM["Google Gemini API<br/>(NLP Summarization)"]
-        Scraper["Puppeteer & Brave API<br/>(Data Extraction)"]
-        CloudStorage[("Supabase CDN<br/>(Audio File Storage)")]
-    end
-
-    UI -->|"HTTP REST"| NodeAPI
-    NodeAPI -->|"Search / DOM Parsing"| Scraper
-    NodeAPI -->|"Prompting"| LLM
-    NodeAPI -->|"Async Job HTTP"| TTS_API
-    TTS_API -.->|"Inference"| Model[(Local GPU Weights)]
-    TTS_API -->|"Audio Stream"| NodeAPI
-    NodeAPI -->|"Upload MP3"| CloudStorage
-    CloudStorage -->|"Public URL Streaming"| UI
+    API --> Brave[Brave Search API]
+    API --> Web[News websites]
+    API --> Gemini[Google Gemini API]
+    API --> TTS[FastAPI TTS Engine]
+    TTS --> Model[Weights vnTTS / XTTS]
+    API --> FFmpeg[Audio transcode WAV -> MP3]
+    API --> Storage[Supabase Storage]
+    Storage --> UI
 ```
 
-### Luồng Xử Lý Bất Đồng Bộ (Asynchronous Processing Flow)
+Luồng chuẩn của ứng dụng:
 
-Để xử lý bài toán **HTTP Timeout** trong quá trình Inference TTS (thường kéo dài đối với các đoạn văn bản lớn), hệ thống triển khai cơ chế **Job Queue & Polling**:
+1. Người dùng nhập từ khóa hoặc URL bài viết.
+2. Backend tìm nguồn phù hợp bằng Brave.
+3. Backend cào bài viết bằng scraper.
+4. Nội dung được đẩy vào Gemini để tóm tắt.
+5. Tóm tắt được hiển thị trên UI và có thể chuyển thành audio.
+6. Audio được sinh qua FastAPI, chuyển sang MP3 và lưu lên Supabase.
 
-<details>
-<summary><b>Chi tiết quy trình sinh Audio (Click to expand)</b></summary>
+## Phần Nghiên Cứu Trong Báo Cáo
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant API as API Gateway (Node)
-    participant Engine as TTS Engine (FastAPI)
-    participant Storage as Cloud Storage
-    
-    Client->>API: POST /api/tts/jobs { text }
-    API->>Engine: Gửi lệnh Background Inference
-    Engine-->>API: Trả về trạng thái & Task ID
-    API-->>Client: Trả về UUID (Status: "queued")
-    
-    loop Polling (3s/lần)
-        Client->>API: GET /api/tts/jobs/:uuid
-        API->>Engine: Polling Task Status
-        Engine-->>API: Processing...
-        API-->>Client: Status: "processing"
-    end
-    
-    Note right of Engine: Model hoàn tất Inference
-    Engine-->>API: Completed + Audio Data (Base64)
-    API->>API: Decode, Transcode sang MP3
-    API->>Storage: Upload File
-    Storage-->>API: Public URL
-    
-    Client->>API: GET /api/tts/jobs/:uuid
-    API-->>Client: Status: "completed" + URL
-    Client->>Storage: Stream Audio
-```
-</details>
+Báo cáo không chỉ mô tả ứng dụng mà còn trình bày toàn bộ quá trình nghiên cứu TTS:
 
----
+- Thu thập dữ liệu từ 3 nguồn: sách nói/PDF, dataset Hugging Face, và crawl từ YouTube.
+- Làm sạch, chuẩn hóa text, xử lý ngoại lệ, đồng bộ audio-text.
+- EDA trên 14.475 cặp văn bản - âm thanh, tổng thời lượng khoảng 27.1 giờ.
+- Chia dữ liệu theo tỉ lệ 80/10/10 cho train/validation/test.
+- Thử nghiệm 3 hướng mô hình: **VITS**, **XTTSv2**, **VieNeu-TTS**.
+- Đánh giá bằng các chỉ số khách quan như **MCD**, **DTW**, **FFE**.
 
-## Tính Năng Cốt Lõi (Core Features)
+Trong phần triển khai hiện tại, runtime TTS của ứng dụng sử dụng bộ xử lý **vnTTS** được gọi từ FastAPI, còn các mô hình và kết quả trong báo cáo là phần nghiên cứu nền tảng của đồ án.
 
-1. **Kiết Xuất Dữ Liệu Tự Động (Automated Web Scraping):**
-   - Ứng dụng **Brave Search API** để phân tích từ khóa và xếp hạng kết quả tin tức.
-   - Triển khai **Puppeteer** ảo hóa trình duyệt (Headless), linh hoạt lọc bỏ quảng cáo, điều hướng và trích xuất cấu trúc DOM trọng tâm của bài báo.
+## Chức Năng Người Dùng
 
-2. **Xử Lý Ngôn Ngữ Tự Nhiên (NLP Summarization):**
-   - Tích hợp **Google Gemini AI** xử lý hàng vạn token đầu vào. Trích xuất quan điểm, bảo toàn ngữ cảnh và tóm tắt theo định dạng Markdown trực quan, chia thành các đoạn súc tích định mức 3-5 câu.
+- Tìm kiếm tin tức bằng từ khóa.
+- Tìm và tóm tắt nhiều bài báo cùng lúc.
+- Xem từng bài viết, tóm tắt theo từng bài và bản tổng hợp.
+- Chọn giọng đọc và tạo audio từ summary.
+- Phát audio trực tiếp từ URL công khai trên Supabase.
 
-3. **Tổng Hợp Giọng Nói Đa Vùng Miền (Vietnamese TTS Synthesis):**
-   - Không sử dụng các giọng đọc máy móc (Robotic-voice). Dịch vụ tích hợp mô hình **XTTS v2 Fine-tuned** (Dự án vnTTS).
-   - Hỗ trợ Cloning và giả lập ngữ điệu bản địa sâu sắc: **Giọng Bắc chuẩn (Hà Nội)**, **Giọng Trung (Huế)**, và **Giọng Nam (Sài Gòn)**.
-
-4. **Hạ Tầng Lưu Trữ Đám Mây (Cloud Architecture):**
-   - Xử lý chuyển mã (Transcoding) tự động từ định dạng thô (`.WAV`) sang định dạng nén (`.MP3`) để tối ưu băng thông mạng.
-   - Upload dữ liệu trực tiếp lên kho Object Storage của **Supabase** và cung cấp Content Delivery Network (CDN) tĩnh cho trải nghiệm stream mượt mà phía Client.
-
----
-
-## Thiết Kế Hệ Thống & Quyết Định Kỹ Thuật (Engineering & Architecture Decisions)
-
-Hệ thống được thiết kế dựa trên các nguyên tắc mở rộng (Scalability) và tối ưu độ trễ (Latency optimization):
-
-- **Tách Biệt Kiến Trúc (Decoupled Microservices):** Tác vụ tính toán I/O mạng (Gọi API, Cào dữ liệu) được giao toàn quyền cho **Node.js (Express)** nhờ ưu điểm vòng lặp sự kiện bất đồng bộ (Non-blocking I/O). Tác vụ sử dụng nhiều tài nguyên tính toán (CPU/GPU-bound) được phân lập thành module **FastAPI** biệt lập. Việc này loại bỏ rủi ro ngắt luồng (thread blocking) ảnh hưởng tới toàn hệ thống.
-- **Cơ Chế Hàng Đợi phi trạng thái (Stateless Job Polling):** Quá trình sinh âm thanh ứng dụng kỹ thuật Job Queue. Backend không duy trì kết nối HTTP WebSocket phức tạp mà cấp quyền theo dõi qua ID độc lập. Server hoàn toàn phi trạng thái (Stateless), dễ dàng triển khai theo quy mô ngang (Horizontal Scaling).
-- **Phân tán Tài nguyên (Serverless File Hosting):** Lưu trữ tệp tĩnh qua Supabase giúp chuyển tác vụ xử lý băng thông (bandwidth streaming) từ Core Server sang phía nhà cung cấp lưu trữ (Cloud Provider). Giữ hệ thống Backend nhẹ gọn.
-
----
-
-## Cấu Trúc Thư Mục (Repository Structure)
+## Cấu Trúc Thư Mục
 
 ```text
 .
-├── backend/                  # API Gateway (Node.js / Express)
-│   ├── config/               # Biến môi trường & cấu hình API Key
-│   ├── controllers/          # Endpoint Handlers (Search, Scrape, TTS, LLM)
-│   ├── routes/               # Quản lý Router
-│   ├── services/             # Các lớp nghiệp vụ logic (Transcode, HTTP Clients)
-│   └── tts_fastapi/          # Module TTS cơ sở
-├── frontend/                 # Client UI (React, Vite)
-│   ├── public/
-│   └── src/                  # React Components, Context, CSS Modules
-├── models/                   # Pre-trained Weights phục vụ Inference
-│   ├── vntts-runtime-model/  # Trọng số mô hình (HuggingFace Auto-download)
-│   └── XTTSv2-Finetuning.../ # Kiến trúc mã nguồn Model AI
-├── src/                      # Jupyter Notebooks phục vụ EDA và Research
-├── data/                     # Thư mục lưu trữ siêu dữ liệu (Metadata)
-└── README.md                 # Tài liệu hệ thống
+├── backend/                    # API gateway Node.js/Express
+│   ├── config/                 # Cấu hình Brave, Gemini, Supabase, TTS
+│   ├── controllers/            # Xử lý request search/scrape/gemini/tts
+│   ├── routes/                 # Khai báo route /api
+│   ├── services/               # Brave, scrape, Gemini, transcode, TTS bridge
+│   └── tts_fastapi/            # FastAPI TTS engine
+├── frontend/                   # React/Vite web app
+│   └── src/                    # UI components, services, styles
+├── data/                       # Dataset, transcripts, metadata
+├── models/                     # Weights, runtime model, fine-tuning assets
+├── src/                        # Notebook / research code
+├── quickstart.ps1              # Script chạy đồng thời các service trên Windows
+├── start.sh                    # Start script cho container
+├── docker-compose.yml          # Compose cho backend/frontend
+├── Dockerfile                  # Container image gốc cho web app
+└── README.md                   # Tài liệu dự án
 ```
 
----
+## Công Nghệ Sử Dụng
 
-## Hướng Dẫn Triển Khai (Deployment & Setup)
+- **Frontend**: React 19, Vite, Axios, Quill.
+- **Backend**: Node.js, Express 5, CORS, dotenv.
+- **Search / Scrape**: Brave Search API, Cheerio, Puppeteer.
+- **Summarization**: Google Gemini API.
+- **TTS**: Python 3.11, FastAPI, vnTTS, XTTS stack, PyTorch.
+- **Storage**: Supabase Storage.
+- **Transcode**: ffmpeg / ffmpeg-static.
 
-### 1. Yêu Cầu Hệ Thống (System Requirements)
-- **Runtime:** Node.js v18+, Python 3.11.
-- **Hardware:** Yêu cầu phần cứng NVIDIA GPU có tính năng CUDA 12.1+ để Inference Model Deep Learning tối ưu.
-- **Dịch vụ thứ 3 (Third-party Services):** Yêu cầu API Key hợp lệ của [Brave Search](https://brave.com/search/api/), [Google Gemini](https://makersuite.google.com/app/apikey) và [Supabase](https://supabase.com/).
+## Yêu Cầu Hệ Thống
 
-### 2. Thiết Lập API Gateway (Node.js)
-```bash
-git clone https://github.com/wokovn/Project-LT-ML-23KHDL1-HCMUS.git
-cd Project-LT-ML-23KHDL1-HCMUS/backend
+- Node.js 18+.
+- Python 3.11.
+- ffmpeg khả dụng trong môi trường chạy TTS/backend.
+- Brave Search API key.
+- Google Gemini API key.
+- Supabase project URL, service key và bucket public cho audio TTS.
+- GPU là khuyến nghị mạnh nếu chạy TTS local, đặc biệt với model lớn.
 
-# Cài đặt thư viện Node
-npm install
-cp .env.example .env
-```
-_Điều chỉnh biến môi trường tại `.env`:_
+## Cấu Hình Biến Môi Trường
+
+### Backend
+
+File mẫu: [backend/.env.example](backend/.env.example)
+
 ```env
+BRAVE_API_KEY=your_brave_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
 PORT=5000
-BRAVE_API_KEY=your_secured_brave_key
-GEMINI_API_KEY=your_secured_gemini_key
 TTS_SERVICE_URL=http://127.0.0.1:8001
-SUPABASE_URL=https://your-domain.supabase.co
-SUPABASE_KEY=your_supabase_service_key
+TTS_SERVICE_TIMEOUT_MS=600000
+TTS_MP3_BITRATE=64k
+FFMPEG_PATH=
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_supabase_key
 SUPABASE_TTS_BUCKET=tts_audio
 ```
 
-### 3. Cài Đặt Inference Engine (Python FastAPI)
-Tại thư mục Root, tạo môi trường ảo và tải pre-trained weights:
+### Frontend
+
+File mẫu: [frontend/.env.example](frontend/.env.example)
+
+```env
+VITE_API_URL=http://localhost:5000
+```
+
+## Cài Đặt Và Chạy Local
+
+### 1. Cài backend Node.js
+
 ```powershell
-# Khởi tạo Sandbox Python 3.11
+cd backend
+npm install
+copy .env.example .env
+```
+
+### 2. Tạo môi trường Python cho TTS
+
+Từ thư mục gốc dự án:
+
+```powershell
 py -3.11 -m venv .venv311
-.\.venv311\Scripts\python.exe -m pip install --upgrade pip
-
-# Cài đặt PyTorch với CUDA 12.1 
+.\.venv311\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
 .\.venv311\Scripts\python.exe -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+.\.venv311\Scripts\python.exe -m pip install -r requirements.txt
+```
 
-# Cài đặt Dependency nội bộ của XTTS / FastAPI
-.\.venv311\Scripts\python.exe -m pip install -r .\models\XTTSv2-Finetuning-for-New-Languages
-equirements.txt
-.\.venv311\Scripts\python.exe -m pip install -r .ackend	ts_fastapi
-equirements.txt
+### 3. Tải model runtime cho vnTTS
 
-# Gọi HuggingFace CLI tải Weights Model vnTTS (Thực thi 1 lần duy nhất)
+```powershell
 .\.venv311\Scripts\python.exe -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='anhnh2002/vnTTS', repo_type='model', local_dir='models/vntts-runtime-model')"
 ```
 
-### 4. Xây Dựng Giao Diện (Frontend)
-```bash
-cd ../frontend
-npm install
-cp .env.example .env
-
-# Chỉnh .env nội bộ Frontend
-# VITE_API_URL=http://localhost:5000
-```
-
----
-
-## Vận Hành Ứng Dụng (Running the Application)
-
-Hệ thống cung cấp Automation Script hỗ trợ vận hành song song toàn bộ cấu trúc:
+### 4. Cài frontend
 
 ```powershell
-# Đối với môi trường Local Development (Hot-reloading Enable)
-.\quickstart.ps1 -Mode dev
+cd frontend
+npm install
+copy .env.example .env
+```
 
-# Đối với môi trường Production (Frontend static build)
+## Chạy Ứng Dụng
+
+### Cách nhanh trên Windows
+
+```powershell
+.\quickstart.ps1 -Mode dev
+```
+
+- Frontend: `http://127.0.0.1:5173`
+- Backend: `http://127.0.0.1:5000`
+- TTS FastAPI: `http://127.0.0.1:8001`
+
+### Chạy chế độ production preview
+
+```powershell
 .\quickstart.ps1 -Mode start
 ```
 
-*(Trong trường hợp khởi chạy thủ công, cần khởi phát `uvicorn` trên port 8001 trước, sau đó chạy `npm start` tại backend và `npm run dev` tại frontend).*
+### Chạy thủ công
 
----
+Mở 3 terminal riêng:
 
-## Tài Liệu API (API Reference)
+```powershell
+# Terminal 1
+Set-Location .
+.\.venv311\Scripts\python.exe -m uvicorn backend.tts_fastapi.app:app --host 127.0.0.1 --port 8001
 
-Tóm tắt các Endpoints cốt lõi tại `localhost:5000`:
+# Terminal 2
+Set-Location backend
+npm run dev
 
-| Endpoint | Method | Payload | Mô tả xử lý (Description) |
-| :--- | :---: | :--- | :--- |
-| `/api/search` | `POST` | `{ "query": "..." }` | Kích hoạt Brave API tìm kiếm thông tin mới nhất. |
-| `/api/scrape` | `POST` | `{ "url": "..." }` | Gửi trình duyệt ảo quét HTML, trích xuất cấu trúc văn bản. |
-| `/api/gemini` | `POST` | `{ "prompt": "..." }` | Invoke quy trình tóm tắt thông tin trên nền tảng AI. |
-| `/api/tts/jobs` | `POST` | `{ "text": "..." }` | Queue 1 tệp văn bản để tiến hành đúc âm thanh. |
-| `/api/tts/jobs/:id` | `GET` | N/A | Fetch kiểm tra trạng thái Task, trả về Link Supabase. |
+# Terminal 3
+Set-Location frontend
+npm run dev -- --host 127.0.0.1 --port 5173
+```
 
----
+## Chạy Bằng Docker
+
+Repo có các file `Dockerfile`, `docker-compose.yml` và `start.sh` cho môi trường container.
+
+- `docker-compose.yml` hiện dựng backend và frontend.
+- `Dockerfile` ở root xây dựng image web app và dùng `start.sh` để khởi động backend + nginx.
+- TTS FastAPI vẫn là một service riêng khi chạy local hoặc GPU host.
+
+## API Reference
+
+Base URL backend: `http://localhost:5000/api`
+
+| Endpoint | Method | Body | Mô tả |
+| --- | --- | --- | --- |
+| `/health` | GET | - | Kiểm tra backend sống.
+| `/search` | POST | `{ query, language?, freshness? }` | Tìm kiếm qua Brave.
+| `/search-summarize` | POST | `{ query, language?, freshness? }` | Tìm kiếm rồi cào và tóm tắt.
+| `/scrape` | POST | `{ url }` | Cào một URL đơn lẻ.
+| `/scrape-summarize` | POST | `{ urls, query? }` | Cào danh sách URL rồi tóm tắt.
+| `/gemini` | POST | `{ prompt }` | Gọi Gemini theo prompt tùy ý.
+| `/gemini/summarize` | POST | `{ content, title }` | Tóm tắt một bài viết.
+| `/tts/health` | GET | - | Kiểm tra kết nối TTS FastAPI.
+| `/tts/synthesize` | POST | `{ text, language?, speaker_audio? }` | Sinh audio đồng bộ, trả base64 MP3.
+| `/tts/tasks` | POST | `{ text, language?, speaker_audio? }` | Tạo task TTS bất đồng bộ.
+| `/tts/tasks/:taskId` | GET | - | Lấy trạng thái task TTS.
+| `/tts/jobs` | POST | `{ text, language?, speaker_audio? }` | Tạo job lưu audio lên Supabase.
+| `/tts/jobs/:key` | GET | - | Lấy trạng thái job và URL audio.
+
+## TTS FastAPI
+
+Service FastAPI trong [backend/tts_fastapi](backend/tts_fastapi) cung cấp:
+
+- `POST /v1/tts`
+- `POST /v1/tasks/tts`
+- `GET /v1/tasks/{task_id}`
+- `GET /health`
+
+Ứng dụng Node.js dùng service này theo 2 cách:
+
+- Sinh audio trực tiếp rồi trả base64.
+- Tạo job, transcode sang MP3, upload lên Supabase và trả URL công khai.
+
+## Ghi Chú Dữ Liệu Và Mô Hình
+
+- Dữ liệu nghiên cứu được mô tả trong report gồm audiobook/PDF, Hugging Face dataset và nguồn crawl từ YouTube.
+- Báo cáo có EDA, phân tích phổ âm thanh, và so sánh các mô hình TTS khác nhau.
+- Phần runtime của web app không train lại toàn bộ mô hình, mà dùng model đã chuẩn bị sẵn để phục vụ suy luận.
+
+## Hạn Chế Và Hướng Phát Triển
+
+- Chất lượng TTS phụ thuộc mạnh vào model runtime và tài nguyên GPU.
+- Các request tóm tắt dài có thể bị giới hạn bởi API key hoặc tốc độ của dịch vụ ngoài.
+- Có thể mở rộng thêm cache, queue bền vững, theo dõi job lâu dài và phân phối model đa giọng tốt hơn.
+
+## Tài Liệu Liên Quan
+
+- [Report.pdf](Report.pdf)
+- [main_flow.md](main_flow.md)
+- [c4_container.md](c4_container.md)
+- [quickstart.ps1](quickstart.ps1)
