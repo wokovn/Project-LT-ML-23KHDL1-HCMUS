@@ -1,0 +1,40 @@
+services:
+  # Backend Node.js Service (Docker - hỗ trợ Puppeteer)
+  - type: web
+    name: project-backend
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: BRAVE_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_TTS_BUCKET
+        value: tts_audio
+      - key: TTS_MP3_BITRATE
+        value: 64k
+      - key: FFMPEG_PATH
+        value: ffmpeg
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # Frontend Static Site (React + Vite)
+  - type: web
+    name: project-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://project-backend.onrender.com/api

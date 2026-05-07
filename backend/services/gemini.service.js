@@ -33,7 +33,7 @@ class GeminiService {
 
 Yêu cầu biên tập:
 0. Chỉ lấy nội dung dài nhất của một bài viết để tóm tắt, tránh bị lạc đề do quảng cáo trong bài.
-1. Văn phong: Chính luận, trang trọng, gãy gọn, dứt khoát (đặc trưng của bản tin Thời sự 19h).
+1. Văn phong: Chính luận, trang trọng, gãy gọn, dứt khoát (đặc trưng của bản tin Thời sự).
 2. Cấu trúc:
    - Nhóm các tin liên quan lại với nhau (nếu có).
    - Mỗi tin được tóm lược thành 2-3 câu, rõ ràng, dễ hiểu.
@@ -74,9 +74,9 @@ Nhiệm vụ: Dưới đây là ${articles.length} bài tin tức. Hãy biên t�
 Yêu cầu biên tập:
 0. **QUAN TRỌNG**: Kiểm tra độ liên quan:
    - Nếu nội dung các bài báo KHÔNG liên quan đến từ khóa tìm kiếm "${query}", hãy DỪNG LẠI và chỉ trả về: "Không tìm được bài viết liên quan đến từ khóa này." nếu query là "tin tức việt nam + ngày" thì sumary bình thường.
-   - Chỉ tiếp tục tóm tắt nếu các bài báo CÓ LIÊN QUAN đến từ khóa.
+   - Chỉ tiếp tục tóm tắt các bài báo CÓ LIÊN QUAN đến từ khóa.
    - Chỉ lấy nội dung dài nhất của một bài viết để tóm tắt, tránh bị lạc đề do quảng cáo trong bài.
-1. Văn phong: Chính luận, trang trọng, gãy gọn, dứt khoát (đặc trưng của bản tin Thời sự 19h).
+1. Văn phong: Chính luận, trang trọng, gãy gọn, dứt khoát (đặc trưng của bản tin Thời sự).
 2. Cấu trúc:
    - Nhóm các tin liên quan lại với nhau (nếu có).
    - Mỗi tin được tóm lược thành 2-3 câu, rõ ràng, dễ hiểu.

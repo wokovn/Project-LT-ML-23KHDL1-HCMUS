@@ -1,165 +1,243 @@
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
 import puppeteerConfig from '../config/puppeteer.config.js';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-class ScrapeService {
-  async scrapeUrl(url) {
-    let browser = null;
-    let tempDir = null;
-    
-    try {
-      // Tạo thư mục tạm rieng biệt cho mỗi instance (FIX EBUSY)
-      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'puppeteer-'));
-      console.log(`[PUPPETEER] Using temp dir: ${tempDir}`);
-      
-      browser = await puppeteer.launch({
-        headless: puppeteerConfig.HEADLESS,
-        userDataDir: tempDir, // Mỗi instance có userDataDir riêng
-        args: [
-          ...puppeteerConfig.ARGS,
-          '--disable-blink-features=AutomationControlled',
-          '--disable-dev-shm-usage', // Giảm memory usage
-          '--no-first-run',
-          '--no-default-browser-check'
-        ]
-      });
-      
-      const page = await browser.newPage();
-      
-      // Set user agent để giả lập Chrome thật
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
-      
-      // Set viewport
-      await page.setViewport({ width: 1920, height: 1080 });
-      
-      // Set extra headers
-      await page.setExtraHTTPHeaders({
-        'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-      });
-      
-      // Disable images và CSS để tải nhanh hơn (REQUEST INTERCEPTION)
-      await page.setRequestInterception(true);
-      page.on('request', (req) => {
-        const resourceType = req.resourceType();
-        if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
-          req.abort();
-        } else {
-          req.continue();
+// ─── Shared browser-like headers ──────────────────────────────────────────────
+const BROWSER_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Accept':
+    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Cache-Control': 'no-cache',
+  'Pragma': 'no-cache',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'none',
+  'Upgrade-Insecure-Requests': '1',
+};
+
+// ─── Content selectors (ordered by priority) ──────────────────────────────────
+const ARTICLE_SELECTORS = [
+  'article',
+  '[class*="article-body"]',
+  '[class*="article-content"]',
+  '[class*="post-content"]',
+  '[class*="entry-content"]',
+  '[itemprop="articleBody"]',
+  '.content-detail',   // VnExpress
+  '.fck_detail',       // VnExpress
+  '#main-detail-body', // Tuổi Trẻ
+  '.detail-content',   // Thanh Niên
+  '.singular-content', // Dân Trí
+  'main',
+  '#content',
+  '.content',
+];
+
+// ─── Fast scrape via axios + cheerio ──────────────────────────────────────────
+async function scrapeWithAxios(url) {
+  const t0 = Date.now();
+  const shortUrl = url.substring(0, 60);
+  console.log(`[AXIOS] ⏳ Fetching: ${shortUrl}`);
+
+  const response = await axios.get(url, {
+    headers: { ...BROWSER_HEADERS, Referer: new URL(url).origin },
+    timeout: 8000,        // 8s hard limit
+    maxRedirects: 5,
+    responseType: 'arraybuffer', // handle encoding correctly
+  });
+  console.log(`[AXIOS] ✅ Got HTTP ${response.status} in ${Date.now() - t0}ms — ${shortUrl}`);
+
+  // Detect charset from Content-Type header
+  const contentType = response.headers['content-type'] || '';
+  const charsetMatch = contentType.match(/charset=([^\s;]+)/i);
+  const charset = charsetMatch ? charsetMatch[1].toLowerCase() : 'utf-8';
+
+  let html;
+  try {
+    html = new TextDecoder(charset).decode(response.data);
+  } catch {
+    html = new TextDecoder('utf-8').decode(response.data);
+  }
+
+  const t1 = Date.now();
+  const $ = cheerio.load(html);
+
+  // Remove noise elements
+  $('script, style, noscript, nav, header, footer, aside, [class*="ads"], [class*="banner"], [id*="ads"], [class*="related"], [class*="comment"]').remove();
+
+  const title = $('title').text().trim() || $('h1').first().text().trim() || '';
+
+  // Try selectors in order
+  let text = '';
+  let foundSelector = 'none';
+  for (const sel of ARTICLE_SELECTORS) {
+    const el = $(sel).first();
+    const content = el.text().replace(/\s+/g, ' ').trim();
+    if (content.length > 300) {
+      text = content;
+      foundSelector = sel;
+      break;
+    }
+  }
+
+  // Fallback: body text
+  if (!text) {
+    text = $('body').text().replace(/\s+/g, ' ').trim();
+    foundSelector = 'body';
+  }
+
+  console.log(`[AXIOS] 📄 selector="${foundSelector}" chars=${text.length} parse=${Date.now()-t1}ms total=${Date.now()-t0}ms — ${shortUrl}`);
+
+  return {
+    title,
+    url,
+    text: text.substring(0, 3000),
+    selector: foundSelector,
+    textLength: text.length,
+  };
+}
+
+// ─── Slow scrape via Puppeteer (fallback) ─────────────────────────────────────
+async function scrapeWithPuppeteer(url) {
+  let browser = null;
+  let tempDir = null;
+  const t0 = Date.now();
+  const shortUrl = url.substring(0, 60);
+
+  try {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'puppeteer-'));
+    console.log(`[PUPPETEER] 🚀 Launching browser for: ${shortUrl}`);
+
+    browser = await puppeteer.launch({
+      headless: puppeteerConfig.HEADLESS,
+      userDataDir: tempDir,
+      args: [
+        ...puppeteerConfig.ARGS,
+        '--disable-blink-features=AutomationControlled',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--no-default-browser-check',
+      ],
+    });
+
+    const page = await browser.newPage();
+    await page.setUserAgent(BROWSER_HEADERS['User-Agent']);
+    await page.setViewport({ width: 1920, height: 1080 });
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': BROWSER_HEADERS['Accept-Language'],
+      Accept: BROWSER_HEADERS['Accept'],
+    });
+
+    // Block heavy assets
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const t = req.resourceType();
+      if (['image', 'stylesheet', 'font', 'media'].includes(t)) {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+      window.chrome = { runtime: {} };
+    });
+
+    const tNav = Date.now();
+    console.log(`[PUPPETEER] ⏳ Navigating (browser launch took ${tNav - t0}ms)...`);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    console.log(`[PUPPETEER] ✅ DOM loaded in ${Date.now() - tNav}ms — ${shortUrl}`);
+    await new Promise((r) => setTimeout(r, 800));
+
+    const data = await page.evaluate((selectors) => {
+      const removeEls = document.querySelectorAll(
+        'script,style,noscript,nav,header,footer,aside'
+      );
+      removeEls.forEach((el) => el.remove());
+
+      const title =
+        document.title ||
+        document.querySelector('h1')?.innerText ||
+        '';
+      let text = '';
+      let foundSelector = 'none';
+
+      for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el && (el.innerText || '').length > 300) {
+          text = el.innerText;
+          foundSelector = sel;
+          break;
         }
-      });
-      
-      // Override webdriver property (STEALTH MODE)
-      await page.evaluateOnNewDocument(() => {
-        Object.defineProperty(navigator, 'webdriver', {
-          get: () => false
-        });
-        
-        // Override chrome property
-        window.chrome = {
-          runtime: {}
-        };
-        
-        // Override permissions
-        const originalQuery = window.navigator.permissions.query;
-        window.navigator.permissions.query = (parameters) => (
-          parameters.name === 'notifications' ?
-            Promise.resolve({ state: Notification.permission }) :
-            originalQuery(parameters)
-        );
-      });
-      
-      // Navigate với optimized strategy (CHI DÙNG DOMCONTENTLOADED)
-      console.log(`[NAV] Đang vào: ${url} (Timeout: 60s)`);
-      
+      }
+
+      if (!text) {
+        text = document.body?.innerText || '';
+        foundSelector = 'body';
+      }
+
+      return {
+        title: title.trim(),
+        url: window.location.href,
+        text: text.replace(/\s+/g, ' ').trim().substring(0, 3000),
+        selector: foundSelector,
+        textLength: text.length,
+      };
+    }, ARTICLE_SELECTORS);
+
+    console.log(`[PUPPETEER] 📄 selector="${data.selector}" chars=${data.textLength} total=${Date.now()-t0}ms — ${shortUrl}`);
+    return data;
+  } finally {
+    if (browser) {
+      await browser.close();
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    if (tempDir) {
       try {
-        await page.goto(url, { 
-          waitUntil: 'domcontentloaded', // Chỉ chờ HTML, không chờ quảng cáo/video
-          timeout: 60000 // Tăng lên 60s
-        });
-        
-        // Special handling cho YouTube/Reddit/TikTok - chờ thêm 2s
-        const heavySites = ['youtube', 'reddit', 'tiktok', 'facebook', 'twitter'];
-        if (heavySites.some(site => url.includes(site))) {
-          console.log(`[NAV] Heavy site detected, waiting extra 2s...`);
-          await new Promise(r => setTimeout(r, 2000));
-        }
-        
-        console.log(`[SUCCESS] ✅ Đã tải: ${url.substring(0, 50)}...`);
-      } catch (err) {
-        console.error(`[FAIL] ❌ Timeout: ${url}`);
-        throw err;
-      }
-      
-      // Wait for dynamic content (1s thôi, không cần lâu)
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const data = await page.evaluate(() => {
-        // Try to find main content
-        const articleSelectors = [
-          'article',
-          '[class*="article"]',
-          '[class*="content"]',
-          '[class*="post"]',
-          'main',
-          '.entry-content',
-          '#content'
-        ];
-        
-        let text = '';
-        let foundSelector = 'none';
-        for (const selector of articleSelectors) {
-          const element = document.querySelector(selector);
-          if (element && element.innerText.length > 200) {
-            text = element.innerText;
-            foundSelector = selector;
-            break;
-          }
-        }
-        
-        // Fallback to body
-        if (!text) {
-          text = document.body.innerText;
-          foundSelector = 'body';
-        }
-        
-        return {
-          title: document.title,
-          url: window.location.href,
-          text: text.substring(0, 2000),
-          selector: foundSelector,
-          textLength: text.length
-        };
-      });
-
-      console.log(`[PUPPETEER] Scraped from selector: ${data.selector}, length: ${data.textLength}`);
-      console.log(`[PUPPETEER] Content preview: ${data.text.substring(0, 200)}...`);
-
-      return data;
-    } catch (error) {
-      console.error(`[PUPPETEER] Error scraping ${url}:`, error.message);
-      throw error;
-    } finally {
-      // Cleanup
-      if (browser) {
-        await browser.close();
-        // Chờ 1s cho browser đóng hẳn trước khi xóa folder (FIX EPERM)
-        await new Promise(r => setTimeout(r, 1000));
-      }
-      
-      // Xóa thư mục tạm (FIX EBUSY)
-      if (tempDir) {
-        try {
-          fs.rmSync(tempDir, { recursive: true, force: true });
-          console.log(`[PUPPETEER] Cleaned up temp dir: ${tempDir}`);
-        } catch (cleanupErr) {
-          console.warn(`[PUPPETEER] Thôi kệ, dọn sau cũng được: ${cleanupErr.message}`);
-        }
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {
+        // ignore cleanup errors
       }
     }
   }
 }
 
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+class ScrapeService {
+  /**
+   * Production: axios+cheerio only (Puppeteer uses 150-300MB RAM per instance
+   * which OOM-kills the process on Render's 512MB free tier).
+   * Development: axios first, Puppeteer fallback if content is thin/blocked.
+   */
+  async scrapeUrl(url) {
+    try {
+      const data = await scrapeWithAxios(url);
+
+      if (data.textLength >= 300) {
+        return data;
+      }
+
+      // axios returned thin content - always fallback to Puppeteer
+      console.warn(`[SCRAPE] axios thin content (${data.textLength} chars) — falling back to Puppeteer`);
+    } catch (err) {
+      const status = err.response?.status;
+      const msg = `${status || err.message}`;
+      console.warn(`[SCRAPE] axios failed (${msg}) — falling back to Puppeteer`);
+    }
+
+    return scrapeWithPuppeteer(url);
+  }
+}
+
 export default new ScrapeService();
+

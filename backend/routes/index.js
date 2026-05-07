@@ -2,6 +2,7 @@ import express from 'express';
 import searchRoutes from './search.routes.js';
 import scrapeRoutes from './scrape.routes.js';
 import geminiRoutes from './gemini.routes.js';
+import ttsRoutes from './tts.routes.js';
 
 const router = express.Router();
 
@@ -14,5 +15,6 @@ router.get('/health', (req, res) => {
 router.use('/', searchRoutes);
 router.use('/', scrapeRoutes);
 router.use('/', geminiRoutes);
+router.use('/', ttsRoutes);
 
 export default router;

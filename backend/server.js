@@ -16,7 +16,10 @@ app.use(express.json());
 app.use('/api', routes);
 
 // Start server
-app.listen(appConfig.PORT, () => {
+const server = app.listen(appConfig.PORT, () => {
   console.log(`Server is running on port ${appConfig.PORT}`);
   console.log(`Environment: ${appConfig.NODE_ENV}`);
 });
+
+// Set server timeout to 120 seconds for long scraping/summarization tasks
+server.timeout = 120000;

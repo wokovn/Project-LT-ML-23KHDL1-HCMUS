@@ -74,6 +74,20 @@ class ApiService {
     const response = await this.client.get('/health');
     return response.data;
   }
+
+  async createTtsJob(text, options = {}) {
+    const response = await this.client.post('/tts/jobs', {
+      text,
+      language: options.language || 'vi',
+      speaker_audio: options.speakerAudio
+    });
+    return response.data;
+  }
+
+  async getTtsJob(key) {
+    const response = await this.client.get(`/tts/jobs/${encodeURIComponent(key)}`);
+    return response.data;
+  }
 }
 
 export default new ApiService();
