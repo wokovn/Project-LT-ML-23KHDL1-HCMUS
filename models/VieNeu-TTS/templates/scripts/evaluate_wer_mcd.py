@@ -208,11 +208,9 @@ def _dtw_path_and_mean_cost(ref_seq, gen_seq):
     back = np.zeros((n + 1, m + 1), dtype=np.uint8)
     cost[0, 0] = 0.0
 
-    D = ref_seq.shape[1]  # số chiều feature (n_mfcc - C0 nếu drop)
     for i in range(1, n + 1):
         diff = gen_seq - ref_seq[i - 1][None, :]
-        # RMS per-dim: sqrt(||diff||^2 / D) — khớp compute_rms_dist trong repo tham chiếu
-        local = np.linalg.norm(diff, axis=1) / math.sqrt(D)
+        local = np.linalg.norm(diff, axis=1)
         for j in range(1, m + 1):
             up = cost[i - 1, j]
             left = cost[i, j - 1]
@@ -264,7 +262,7 @@ def _extract_mfcc(y, sample_rate: int, n_mfcc: int, n_fft: int, hop_length: int,
     import torch
     import torchaudio
 
-    n_mels = max(80, n_mfcc * 4)  # >= 80 để MFCC đủ resolution (repo dùng 80 mels)
+    n_mels = max(40, n_mfcc * 2)
     transform = torchaudio.transforms.MFCC(
         sample_rate=sample_rate,
         n_mfcc=n_mfcc,
@@ -373,9 +371,8 @@ def _compute_metrics_for_pair(
     _, dtw_mfcc = _dtw_path_and_mean_cost(mfcc_ref, mfcc_gen)
     if mfcc_ref.shape[1] <= 0:
         raise ValueError("invalid MFCC dimension for MCD")
-    # MCD = mean RMS-per-dim distance dọc theo DTW path (khớp repo AI-Unicamp/TTS-Objective-Metrics).
-    # Normalization theo D đã được thực hiện bên trong _dtw_path_and_mean_cost (local cost = L2/sqrt(D)).
-    mcd = float(dtw_mfcc)
+    # Repo-style MCD: DTW-normalized RMS distance on MFCC vectors.
+    mcd = float(dtw_mfcc / math.sqrt(float(mfcc_ref.shape[1])))
 
     f0_ref_t, f0_ref = _extract_f0_track(y_ref, sample_rate, hop_length, f0_min_hz, f0_max_hz)
     f0_gen_t, f0_gen = _extract_f0_track(y_gen, sample_rate, hop_length, f0_min_hz, f0_max_hz)
